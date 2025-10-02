@@ -13,6 +13,17 @@
         <div class="control-card">
             <h2>Motor Control</h2>
             
+            <div class="status-bar">
+                <div class="status-item">
+                    <span class="status-label">Connection:</span>
+                    <span id="connection-status" class="status-indicator disconnected">Disconnected</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Motor:</span>
+                    <span id="motor-status" class="motor-status unknown">Unknown</span>
+                </div>
+            </div>
+            
             <div class="control-group">
                 <label for="microsteps">Microstepping:</label>
                 <select id="microsteps">
