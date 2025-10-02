@@ -2,8 +2,13 @@
 #define CONFIG_H
 
 // Wi-Fi Credentials
+#ifndef WIFI_SSID
 #define WIFI_SSID "your_ssid"
+#endif
+
+#ifndef WIFI_PASSWORD
 #define WIFI_PASSWORD "your_password"
+#endif
 
 // Pin Assignments
 #define STEP_PIN 4

@@ -4,7 +4,7 @@
 #include "motor_controller.h"
 
 WifiManager wifiManager;
-WebServer webServer;
+WebServerController webServer;
 MotorController motorController;
 
 void setup() {
@@ -17,7 +17,7 @@ void setup() {
     motorController.begin();
 
     // Initialize web server
-    webServer.begin();
+    webServer.begin(motorController, wifiManager);
 }
 
 void loop() {

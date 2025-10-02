@@ -3,89 +3,137 @@
 #include "state.h"
 #include <Arduino.h>
 #include <driver/rmt.h>
+#include <soc/rtc.h>
 
-class MotorController {
-public:
-    MotorController();
-    void begin();
-    void setMicrostepping(int microsteps);
-    void setFrequency(int frequency);
-    void setDirection(bool direction);
-    void setMode(int mode);
-    MotorState getState();
+namespace {
+constexpr uint16_t kAllowedMicrosteps[] = {1, 2, 4, 8, 16};
+constexpr uint16_t kDefaultMicrosteps = kAllowedMicrosteps[0];
+constexpr uint32_t kDefaultFrequency = 0;
+constexpr uint32_t kMaxFrequency = 10000;
+constexpr bool kDefaultDirection = true;
+constexpr MotorMode kDefaultMode = MotorMode::STOPPED;
+constexpr uint8_t kRmtClockDiv = 80;  // 1 MHz base clock
+}  // namespace
 
-private:
-    void generatePulse();
-    void updateRMT();
-
-    MotorState state;
-    rmt_channel_t rmtChannel;
-};
-
-MotorController::MotorController() {
-    state.microsteps = 16; // Default microstepping
-    state.frequency = 0;    // Default frequency
-    state.direction = true;  // Default direction (CW)
-    state.mode = 0;          // Default mode (STOPPED)
-    rmtChannel = RMT_CHANNEL_0; // Assign RMT channel
+MotorController::MotorController()
+    : currentState{ kDefaultMicrosteps, kDefaultFrequency, kDefaultDirection, kDefaultMode },
+      rmtChannel(RMT_CHANNEL_0) {
 }
 
 void MotorController::begin() {
-    // Initialize RMT for pulse generation
-    rmt_config_t rmtConfig;
-    rmtConfig.channel = rmtChannel;
-    rmtConfig.gpio_num = STEP_PIN; // STEP pin from config.h
-    rmtConfig.mem_block_num = 1;
-    rmtConfig.rmt_mode = RMT_MODE_TX;
-    rmtConfig.clk_div = RMT_CLK_DIV; // Set clock divider
-    rmtConfig.tx_config.carrier_en = RMT_CARRIER_DISABLE;
-    rmtConfig.tx_config.idle_level = RMT_IDLE_LEVEL_LOW;
-    rmtConfig.tx_config.idle_output_en = RMT_IDLE_OUTPUT_ENABLE;
-
-    rmt_config(&rmtConfig);
-    rmt_driver_install(rmtChannel, 0, 0);
+    pinMode(DIR_PIN, OUTPUT);
+    digitalWrite(DIR_PIN, currentState.direction ? HIGH : LOW);
+    pinMode(EN_PIN, OUTPUT);
+    digitalWrite(EN_PIN, LOW);
+    configureRMT();
+    updateRMT();
 }
 
-void MotorController::setMicrostepping(int microsteps) {
-    if (microsteps == 1 || microsteps == 2 || microsteps == 4 || microsteps == 8 || microsteps == 16) {
-        state.microsteps = microsteps;
-        // Update MS1 and MS2 pins based on microsteps
-        digitalWrite(MS1_PIN, (microsteps > 1) ? HIGH : LOW);
-        digitalWrite(MS2_PIN, (microsteps > 4) ? HIGH : LOW);
+void MotorController::reset() {
+    currentState.microsteps = kDefaultMicrosteps;
+    currentState.frequency = kDefaultFrequency;
+    currentState.direction = kDefaultDirection;
+    currentState.mode = kDefaultMode;
+    digitalWrite(DIR_PIN, currentState.direction ? HIGH : LOW);
+    digitalWrite(EN_PIN, LOW);
+    updateRMT();
+}
+
+void MotorController::setMicrosteps(uint16_t microsteps) {
+    bool valid = false;
+    for (size_t i = 0; i < (sizeof(kAllowedMicrosteps) / sizeof(uint16_t)); ++i) {
+        if (kAllowedMicrosteps[i] == microsteps) {
+            valid = true;
+            break;
+        }
     }
+    currentState.microsteps = valid ? microsteps : kDefaultMicrosteps;
+    updateRMT();
 }
 
-void MotorController::setFrequency(int frequency) {
-    if (frequency >= 0 && frequency <= 10000) {
-        state.frequency = frequency;
+uint16_t MotorController::getMicrosteps() const {
+    return currentState.microsteps;
+}
+
+void MotorController::setFrequency(uint32_t frequency) {
+    if (frequency <= kMaxFrequency) {
+        currentState.frequency = frequency;
         updateRMT();
     }
 }
 
-void MotorController::setDirection(bool direction) {
-    state.direction = direction;
-    digitalWrite(DIR_PIN, direction ? HIGH : LOW);
+uint32_t MotorController::getFrequency() const {
+    return currentState.frequency;
 }
 
-void MotorController::setMode(int mode) {
-    state.mode = mode;
-    if (mode == 1) { // RUNNING
-        generatePulse();
-    } else {
-        rmt_disable(rmtChannel); // Stop pulses
-    }
+void MotorController::setDirection(bool clockwise) {
+    currentState.direction = clockwise;
+    digitalWrite(DIR_PIN, currentState.direction ? HIGH : LOW);
 }
 
-MotorState MotorController::getState() {
-    return state;
+bool MotorController::getDirection() const {
+    return currentState.direction;
 }
 
-void MotorController::generatePulse() {
-    // Implement pulse generation logic using RMT
-    // This function will be called when the motor is set to RUNNING mode
+void MotorController::setMode(MotorMode mode) {
+    currentState.mode = mode;
+    updateRMT();
+}
+
+MotorMode MotorController::getMode() const {
+    return currentState.mode;
+}
+
+void MotorController::updateMotorState() {
+    updateRMT();
+}
+
+MotorState MotorController::getMotorState() const {
+    return currentState;
+}
+
+void MotorController::configureRMT() {
+    rmt_config_t config = {};
+    config.channel = rmtChannel;
+    config.gpio_num = static_cast<gpio_num_t>(STEP_PIN);
+    config.mem_block_num = 1;
+    config.clk_div = kRmtClockDiv;
+    config.rmt_mode = RMT_MODE_TX;
+    config.tx_config.loop_en = false;
+    config.tx_config.idle_output_en = true;
+    config.tx_config.idle_level = RMT_IDLE_LEVEL_LOW;
+    config.tx_config.carrier_en = false;
+
+    rmt_config(&config);
+    rmt_driver_install(rmtChannel, 0, 0);
 }
 
 void MotorController::updateRMT() {
-    // Update RMT configuration based on the current frequency
-    // Ensure the pulse width and timing are correct
+    if (currentState.mode == MotorMode::RELEASED || currentState.frequency == 0) {
+        rmt_tx_stop(rmtChannel);
+        digitalWrite(EN_PIN, HIGH);
+        return;
+    }
+
+    digitalWrite(EN_PIN, LOW);
+
+    if (currentState.mode != MotorMode::RUNNING) {
+        rmt_tx_stop(rmtChannel);
+        return;
+    }
+
+    const uint32_t baseClock = APB_CLK_FREQ / kRmtClockDiv;
+    uint32_t halfPeriod = baseClock / (currentState.frequency * 2U);
+    if (halfPeriod == 0) {
+        halfPeriod = 1;
+    }
+
+    rmt_item32_t pulse = {};
+    pulse.level0 = 1;
+    pulse.duration0 = halfPeriod;
+    pulse.level1 = 0;
+    pulse.duration1 = halfPeriod;
+
+    rmt_write_items(rmtChannel, &pulse, 1, true);
+    rmt_tx_start(rmtChannel, true);
 }

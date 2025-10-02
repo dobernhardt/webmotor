@@ -3,23 +3,28 @@
 
 #include <Arduino.h>
 #include <WebServer.h>
-#include "config.h"
 #include "state.h"
 
-class WebServer {
-public:
-    WebServer();
-    void begin();
-    void handleClient();
-    
-private:
-    WebServer server;
+class MotorController;
+class WifiManager;
 
-    void setupRoutes();
+class WebServerController {
+public:
+    WebServerController();
+    void begin(MotorController& motorController, WifiManager& wifiManager);
+    void handle();
+
+private:
+    ::WebServer server;
+    MotorController* motor;
+    WifiManager* wifi;
+    MotorState cachedState;
+
+    void registerRoutes();
     void handleMotorStatus();
     void handleMotorControl();
     void handleWiFiConfig();
-    void sendResponse(int code, const String& message);
+    void sendJson(int statusCode, const String& payload);
 };
 
 #endif // WEB_SERVER_H
