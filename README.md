@@ -1,162 +1,65 @@
-# WebMotor - ESP32 Stepper Motor Controller
+# WebMotor Project
 
-A web-based stepper motor controller using ESP32 (ATOM S3 LITE) and TMC2209 driver. This project provides both a REST API and web interface for controlling stepper motors with precise microstepping capabilities.
+## Overview
+WebMotor is an educational Arduino framework-based firmware designed for the M5Stack ATOM S3 Lite (ESP32-S3). It provides a simple and intuitive way to control a stepper motor using a TMC2209 driver. The project exposes a REST API and a web interface for configuration and live control of motor parameters such as speed, direction, microstepping, and mode.
 
 ## Features
+- Continuous step pulse generation up to 10 kHz.
+- Runtime adjustment of microstepping, direction, and run mode.
+- Network-based control via REST API and a web interface over Wi-Fi, with an access point (AP) fallback.
+- mDNS discoverability for easy access.
+- Persistent storage of Wi-Fi credentials.
 
-- 🎯 TMC2209 stepper driver support
-- 🌐 WiFi connectivity with automatic AP fallback
-- 🔄 Real-time motor control via web interface
-- 🛠 REST API for automation
-- 🔍 mDNS discovery support
-- 📱 Responsive web interface
-- ⚙️ Configurable microstepping (1/1 to 1/16)
-- 🔋 Motor power management (run/stop/release modes)
-
-## Hardware Requirements
-
-- ESP32 ATOM S3 LITE
-- TMC2209 stepper driver
-- Stepper motor
-- Power supply suitable for your motor
-
-## Pin Connections
-
-| ESP32 Pin | TMC2209 Pin | Function |
-|-----------|-------------|----------|
-| GPIO4     | STEP        | Step signal |
-| GPIO5     | DIR        | Direction |
-| GPIO6     | EN         | Enable/disable |
-| GPIO7     | MS1        | Microstep config 1 |
-| GPIO8     | MS2        | Microstep config 2 |
-
-## Building and Flashing
-
-This project uses ESP-IDF framework. To build and flash:
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/WebMotor.git
-cd WebMotor
-
-# Build the project
-idf.py build
-
-# Flash to your device
-idf.py -p (PORT) flash
+## Project Structure
+```
+WebMotor
+├── data
+│   ├── app.js          # JavaScript for web interface
+│   ├── index.html      # Main HTML page for the web interface
+│   └── styles.css      # CSS styles for the web interface
+├── include
+│   ├── config.h        # Configuration constants
+│   ├── motor_controller.h # Motor control functions
+│   ├── state.h         # Motor state definitions
+│   ├── web_server.h     # HTTP server and API handling
+│   └── wifi_manager.h   # Wi-Fi management functions
+├── src
+│   ├── main.cpp        # Entry point of the application
+│   ├── motor_controller.cpp # Implementation of motor control
+│   ├── web_server.cpp   # Implementation of web server
+│   └── wifi_manager.cpp  # Implementation of Wi-Fi manager
+├── test
+│   └── test_motor_controller.cpp # Unit tests for motor controller
+├── platformio.ini      # PlatformIO configuration file
+└── README.md           # Project documentation
 ```
 
-## First-Time Setup
+## Getting Started
+1. **Clone the Repository**: 
+   ```
+   git clone <repository-url>
+   cd WebMotor
+   ```
 
-1. Power on the device
-2. Connect to the "WebMotor-Config" WiFi network 
-3. Open http://192.168.4.1 in your browser
-4. Configure your WiFi network credentials
-5. Device will reboot and connect to your network
+2. **Install PlatformIO**: Ensure you have PlatformIO installed in your development environment.
 
-## Using the Web Interface
+3. **Open the Project**: Open the project folder in your preferred IDE that supports PlatformIO.
 
-Access the web interface by either:
-- Opening http://webmotor.local (if mDNS is supported)
-- Using the device's IP address (check your router or serial output)
+4. **Configure Wi-Fi Credentials**: Update the `include/config.h` file with your Wi-Fi credentials.
 
-### Features:
-- Microstepping control (1/1 to 1/16 steps)
-- Speed control (0-10,000 Hz)
-- Direction control (CW/CCW)
-- Operation modes (Start/Stop/Release)
-- WiFi configuration
+5. **Build and Upload**: Use PlatformIO to build the project and upload it to the M5Stack ATOM S3 Lite.
 
-## REST API
+6. **Access the Web Interface**: Once the device is connected to Wi-Fi, access the web interface via the provided mDNS hostname or IP address.
 
-### Endpoints
+## Usage
+- Use the web interface to control the motor's microstepping, frequency, direction, and mode.
+- Monitor the motor status and make adjustments in real-time.
 
-#### GET /api/motor/status
-Returns current motor status:
-```json
-{
-    "microsteps": 16,
-    "frequency": 1000,
-    "direction": true,
-    "mode": 1
-}
-```
-
-#### POST /api/motor/control
-Control motor parameters:
-```json
-{
-    "microsteps": 16,    // 1, 2, 4, 8, or 16
-    "frequency": 1000,   // 0-10000 Hz
-    "direction": true,   // true=CW, false=CCW
-    "mode": 1           // 0=stopped, 1=running, 2=released
-}
-```
-
-#### GET /api/wifi/config
-Get current WiFi configuration:
-```json
-{
-    "ssid": "current_network",
-    "configured": true
-}
-```
-
-#### POST /api/wifi/config
-Configure WiFi settings:
-```json
-{
-    "ssid": "your_network",
-    "password": "your_password"
-}
-```
-
-## Technical Details
-
-### Implementation Features
-
-- Hardware-precise stepping using RMT peripheral
-- 1μs pulse width for reliable driver operation
-- Up to 10kHz stepping frequency
-- Non-blocking web server operation
-- Persistent WiFi configuration in NVS
-- Automatic fallback to AP mode if WiFi connection fails
-
-### Components
-
-1. **TMC2209 Driver (components/tmc2209)**
-   - Hardware control interface
-   - Microstepping configuration
-   - RMT-based pulse generation
-
-2. **WiFi Manager (components/wifi_manager)**
-   - Connection management
-   - AP/STA mode switching
-   - Configuration persistence
-
-3. **Web Server (components/web_server)**
-   - REST API implementation
-   - Static file serving
-   - mDNS service
-
-## Development
-
-### Project Structure
-```
-WebMotor/
-├── components/
-│   ├── tmc2209/         # Motor driver component
-│   ├── wifi_manager/    # WiFi management
-│   └── web_server/      # Web interface and API
-├── main/
-│   └── main.c          # Application entry point
-└── html/               # Web interface files
-```
+## Future Enhancements
+- Implement acceleration profiles.
+- Add WebSocket support for real-time updates.
+- Introduce authentication for secure access.
+- Expand to support multiple motors.
 
 ## License
-
-[MIT License](LICENSE) - feel free to use in your own projects.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+This project is licensed under the MIT License. See the LICENSE file for more details.

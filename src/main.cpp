@@ -1,18 +1,27 @@
 #include <Arduino.h>
+#include "wifi_manager.h"
+#include "web_server.h"
+#include "motor_controller.h"
 
-// put function declarations here:
-int myFunction(int, int);
+WifiManager wifiManager;
+WebServer webServer;
+MotorController motorController;
 
 void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+    Serial.begin(115200);
+    
+    // Initialize Wi-Fi manager
+    wifiManager.begin();
+
+    // Initialize motor controller
+    motorController.begin();
+
+    // Initialize web server
+    webServer.begin();
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+    // Handle Wi-Fi and web server tasks
+    wifiManager.handle();
+    webServer.handle();
 }

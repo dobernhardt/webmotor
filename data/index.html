@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebMotor Control</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>WebMotor Control Interface</h1>
+        <div class="motor-control">
+            <label for="microsteps">Microsteps:</label>
+            <select id="microsteps">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="4">4</option>
+                <option value="8">8</option>
+                <option value="16">16</option>
+            </select>
+
+            <label for="frequency">Frequency (Hz):</label>
+            <input type="range" id="frequency" min="0" max="10000" value="1000">
+            <span id="frequency-value">1000</span> Hz
+
+            <label for="direction">Direction:</label>
+            <input type="checkbox" id="direction" checked>
+            <label for="direction">CW</label>
+
+            <div class="mode-buttons">
+                <button id="stop">Stop</button>
+                <button id="run">Run</button>
+                <button id="release">Release</button>
+            </div>
+        </div>
+
+        <div class="wifi-config">
+            <h2>Wi-Fi Configuration</h2>
+            <label for="ssid">SSID:</label>
+            <input type="text" id="ssid" placeholder="Enter SSID">
+            <label for="password">Password:</label>
+            <input type="password" id="password" placeholder="Enter Password">
+            <button id="save-wifi">Save Wi-Fi</button>
+        </div>
+
+        <div class="status">
+            <h2>Status</h2>
+            <pre id="status-output"></pre>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
