@@ -1,50 +1,48 @@
 // app.js
 document.addEventListener('DOMContentLoaded', function() {
-    const frequencyInput = document.getElementById('frequency');
-    const microstepsInput = document.getElementById('microsteps');
+    // Frequency slider handling
+    const frequencySlider = document.getElementById('frequency');
+    const frequencyValue = document.getElementById('frequency-value');
+    
+    frequencySlider.addEventListener('input', function() {
+        frequencyValue.textContent = this.value;
+    });
+    
+    // Direction toggle handling
     const directionToggle = document.getElementById('direction');
-    const modeButtons = document.querySelectorAll('input[name="mode"]');
-    const statusDisplay = document.getElementById('status');
-
-    function updateStatus() {
-        fetch('/api/motor/status')
-            .then(response => response.json())
-            .then(data => {
-                statusDisplay.innerText = `Microsteps: ${data.microsteps}, Frequency: ${data.frequency} Hz, Direction: ${data.direction ? 'CW' : 'CCW'}, Mode: ${data.mode}`;
-            })
-            .catch(error => console.error('Error fetching motor status:', error));
+    const directionText = document.getElementById('direction-text');
+    
+    directionToggle.addEventListener('change', function() {
+        directionText.textContent = this.checked ? 'CW' : 'CCW';
+    });
+    
+    // Button event handlers
+    document.getElementById('start').addEventListener('click', function() {
+        updateStatus('Motor started');
+    });
+    
+    document.getElementById('stop').addEventListener('click', function() {
+        updateStatus('Motor stopped');
+    });
+    
+    document.getElementById('release').addEventListener('click', function() {
+        updateStatus('Motor released');
+    });
+    
+    document.getElementById('save-wifi').addEventListener('click', function() {
+        const ssid = document.getElementById('ssid').value;
+        const password = document.getElementById('password').value;
+        if (ssid && password) {
+            updateStatus(`WiFi config saved: ${ssid}`);
+        } else {
+            updateStatus('Error: Please enter SSID and Password');
+        }
+    });
+    
+    function updateStatus(message) {
+        const statusOutput = document.getElementById('status-output');
+        const timestamp = new Date().toLocaleTimeString();
+        statusOutput.textContent += `\n[${timestamp}] ${message}`;
+        statusOutput.scrollTop = statusOutput.scrollHeight;
     }
-
-    function sendControlUpdate() {
-        const controlData = {
-            frequency: parseInt(frequencyInput.value),
-            microsteps: parseInt(microstepsInput.value),
-            direction: directionToggle.checked,
-            mode: Array.from(modeButtons).find(button => button.checked).value
-        };
-
-        fetch('/api/motor/control', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(controlData)
-        })
-        .then(response => {
-            if (!response.ok) {
-                return response.json().then(err => {
-                    throw new Error(err.error);
-                });
-            }
-            updateStatus();
-        })
-        .catch(error => console.error('Error updating motor control:', error));
-    }
-
-    frequencyInput.addEventListener('change', sendControlUpdate);
-    microstepsInput.addEventListener('change', sendControlUpdate);
-    directionToggle.addEventListener('change', sendControlUpdate);
-    modeButtons.forEach(button => button.addEventListener('change', sendControlUpdate));
-
-    setInterval(updateStatus, 1000);
 });

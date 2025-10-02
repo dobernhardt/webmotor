@@ -8,44 +8,70 @@
 </head>
 <body>
     <div class="container">
-        <h1>WebMotor Control Interface</h1>
-        <div class="motor-control">
-            <label for="microsteps">Microsteps:</label>
-            <select id="microsteps">
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="4">4</option>
-                <option value="8">8</option>
-                <option value="16">16</option>
-            </select>
+        <h1>WebMotor Control</h1>
+        
+        <div class="control-card">
+            <h2>Motor Control</h2>
+            
+            <div class="control-group">
+                <label for="microsteps">Microstepping:</label>
+                <select id="microsteps">
+                    <option value="1">Full Step (1/1)</option>
+                    <option value="2">Half Step (1/2)</option>
+                    <option value="4">Quarter Step (1/4)</option>
+                    <option value="8">Eighth Step (1/8)</option>
+                    <option value="16">Sixteenth Step (1/16)</option>
+                </select>
+            </div>
 
-            <label for="frequency">Frequency (Hz):</label>
-            <input type="range" id="frequency" min="0" max="10000" value="1000">
-            <span id="frequency-value">1000</span> Hz
+            <div class="control-group">
+                <label for="frequency">Frequency (Hz):</label>
+                <div class="frequency-container">
+                    <input type="range" id="frequency" min="0" max="10000" value="0" step="10">
+                    <div class="frequency-display">
+                        <span id="frequency-value">0</span>
+                    </div>
+                </div>
+            </div>
 
-            <label for="direction">Direction:</label>
-            <input type="checkbox" id="direction" checked>
-            <label for="direction">CW</label>
+            <div class="control-group">
+                <label>Direction:</label>
+                <div class="toggle-container">
+                    <input type="checkbox" id="direction" class="toggle-input">
+                    <label for="direction" class="toggle-switch"></label>
+                    <span class="toggle-text" id="direction-text">CCW</span>
+                </div>
+            </div>
 
-            <div class="mode-buttons">
-                <button id="stop">Stop</button>
-                <button id="run">Run</button>
-                <button id="release">Release</button>
+            <div class="control-group">
+                <label>Mode:</label>
+                <div class="mode-buttons">
+                    <button id="start" class="btn btn-primary">Start</button>
+                    <button id="stop" class="btn btn-secondary">Stop</button>
+                    <button id="release" class="btn btn-info">Release</button>
+                </div>
             </div>
         </div>
 
-        <div class="wifi-config">
-            <h2>Wi-Fi Configuration</h2>
-            <label for="ssid">SSID:</label>
-            <input type="text" id="ssid" placeholder="Enter SSID">
-            <label for="password">Password:</label>
-            <input type="password" id="password" placeholder="Enter Password">
-            <button id="save-wifi">Save Wi-Fi</button>
+        <div class="control-card">
+            <h2>WiFi Configuration</h2>
+            
+            <div class="control-group">
+                <label for="ssid">SSID:</label>
+                <input type="text" id="ssid" placeholder="Enter SSID">
+            </div>
+
+            <div class="control-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" placeholder="Enter Password">
+            </div>
+
+            <button id="save-wifi" class="btn btn-primary">Save WiFi Config</button>
         </div>
 
         <div class="status">
             <h2>Status</h2>
-            <pre id="status-output"></pre>
+            <pre id="status-output">Ready...</pre>
         </div>
     </div>
 
