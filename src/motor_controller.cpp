@@ -30,13 +30,21 @@ MotorController::MotorController()
 void MotorController::begin() {
     Serial.println("[MOTOR] Initializing motor controller");
     
+    // Configure direction pin
     pinMode(DIR_PIN, OUTPUT);
     digitalWrite(DIR_PIN, currentState.direction ? HIGH : LOW);
     Serial.printf("[MOTOR] Direction pin set: %s\n", currentState.direction ? "HIGH (CW)" : "LOW (CCW)");
     
+    // Configure enable pin
     pinMode(EN_PIN, OUTPUT);
     digitalWrite(EN_PIN, LOW);
     Serial.println("[MOTOR] Enable pin set LOW (motor enabled)");
+    
+    // Configure microstepping pins for TMC2209
+    pinMode(MS1_PIN, OUTPUT);
+    pinMode(MS2_PIN, OUTPUT);
+    setMicrostepPins(currentState.microsteps);
+    Serial.println("[MOTOR] Microstepping pins configured");
     
     configureRMT();
     Serial.println("[MOTOR] RMT configured");
@@ -45,15 +53,6 @@ void MotorController::begin() {
     Serial.println("[MOTOR] Motor controller initialized");
 }
 
-void MotorController::reset() {
-    currentState.microsteps = kDefaultMicrosteps;
-    currentState.frequency = kDefaultFrequency;
-    currentState.direction = kDefaultDirection;
-    currentState.mode = kDefaultMode;
-    digitalWrite(DIR_PIN, currentState.direction ? HIGH : LOW);
-    digitalWrite(EN_PIN, LOW);
-    updateRMT();
-}
 
 void MotorController::setMicrosteps(uint16_t microsteps) {
     bool valid = false;
@@ -63,8 +62,15 @@ void MotorController::setMicrosteps(uint16_t microsteps) {
             break;
         }
     }
-    currentState.microsteps = valid ? microsteps : kDefaultMicrosteps;
-    updateRMT();
+    
+    uint16_t newMicrosteps = valid ? microsteps : kDefaultMicrosteps;
+    
+    if (currentState.microsteps != newMicrosteps) {
+        currentState.microsteps = newMicrosteps;
+        setMicrostepPins(currentState.microsteps);
+        Serial.printf("[MOTOR] Microstepping changed to: %u\n", currentState.microsteps);
+        updateRMT();
+    }
 }
 
 uint16_t MotorController::getMicrosteps() const {
@@ -72,15 +78,50 @@ uint16_t MotorController::getMicrosteps() const {
 }
 
 void MotorController::setFrequency(uint32_t frequency) {
-    Serial.printf("[MOTOR] setFrequency called: %u Hz (max: %u)\n", frequency, kMaxFrequency);
+    Serial.printf("[MOTOR] Setting frequency: %u Hz\n", frequency);
     
-    if (frequency <= kMaxFrequency) {
-        uint32_t oldFrequency = currentState.frequency;
+    // Clamp frequency to safe limits for ATOM S3 Lite
+    if (frequency > kMaxFrequency) {
+        frequency = kMaxFrequency;
+        Serial.printf("[MOTOR] WARNING: Frequency clamped to %u Hz\n", frequency);
+    }
+    
+    // Store previous state for recovery
+    MotorMode previousMode = currentState.mode;
+    bool wasRunning = (currentState.mode == MotorMode::RUNNING);
+    
+    if (currentState.frequency != frequency) {
+        Serial.printf("[MOTOR] Frequency changed: %u -> %u\n", currentState.frequency, frequency);
+        
+        // If motor is running, we need to safely change frequency
+        if (wasRunning) {
+            Serial.println("[MOTOR] Safely stopping RMT for frequency change");
+            
+            // Temporarily stop the motor to change frequency
+            currentState.mode = MotorMode::STOPPED;
+            updateRMT();
+            
+            // Small delay for ATOM S3 Lite stability
+            delay(5);
+        }
+        
+        // Update frequency
         currentState.frequency = frequency;
-        Serial.printf("[MOTOR] Frequency changed: %u -> %u Hz\n", oldFrequency, frequency);
-        updateRMT();
+        
+        // If motor was running, restart it with new frequency
+        if (wasRunning && frequency > 0) {
+            Serial.println("[MOTOR] Restarting RMT with new frequency");
+            currentState.mode = MotorMode::RUNNING;
+            updateRMT();
+        } else if (wasRunning && frequency == 0) {
+            Serial.println("[MOTOR] Frequency set to 0, motor remains stopped");
+            // Keep motor stopped if frequency is 0
+        } else {
+            // Motor wasn't running, just update RMT configuration
+            updateRMT();
+        }
     } else {
-        Serial.printf("[MOTOR] ERROR: Frequency %u exceeds maximum %u Hz\n", frequency, kMaxFrequency);
+        Serial.println("[MOTOR] Frequency unchanged, no RMT update needed");
     }
 }
 
@@ -146,73 +187,154 @@ void MotorController::configureRMT() {
 void MotorController::updateRMT() {
     Serial.println("[MOTOR] updateRMT() called");
     
-    // If the motor should be released or the target speed is zero, stop sending pulses
-    // and disable the stepper driver (EN high disables most drivers).
-    if (currentState.mode == MotorMode::RELEASED || currentState.frequency == 0) {
-        Serial.printf("[MOTOR] Stopping RMT - Mode: %s, Frequency: %u\n", 
-                     (currentState.mode == MotorMode::RELEASED) ? "RELEASED" : "FREQ_ZERO", 
-                     currentState.frequency);
-        rmt_tx_stop(rmtChannel);
-        digitalWrite(EN_PIN, HIGH);
-        Serial.println("[MOTOR] Motor disabled (EN=HIGH)");
+    // For ATOM S3 Lite stability, always do a clean stop first
+    Serial.println("[MOTOR] Ensuring RMT is stopped");
+    rmt_tx_stop(rmtChannel);
+    
+    // Longer delay for embedded device stability
+    delay(2);
+    
+    // Handle RELEASED mode - disable driver completely
+    if (currentState.mode == MotorMode::RELEASED) {
+        Serial.println("[MOTOR] Mode is RELEASED - disabling driver");
+        digitalWrite(EN_PIN, HIGH);  // Disable driver - motor spins freely
+        Serial.println("[MOTOR] Motor disabled (EN=HIGH) - shaft can rotate freely");
         return;
     }
 
-    // Make sure the driver is enabled while we may emit pulses.
+    // For RUNNING and STOPPED modes, enable the driver to maintain holding torque
     digitalWrite(EN_PIN, LOW);
-    Serial.println("[MOTOR] Motor enabled (EN=LOW)");
+    Serial.println("[MOTOR] Motor enabled (EN=LOW) - driver active");
 
-    // Modes like STOPPED keep the driver enabled but do not emit pulses.
-    if (currentState.mode != MotorMode::RUNNING) {
-        Serial.printf("[MOTOR] Motor mode is %d (not RUNNING), stopping RMT\n", static_cast<int>(currentState.mode));
-        rmt_tx_stop(rmtChannel);
+    // For STOPPED mode or zero frequency, keep driver enabled but no pulses
+    if (currentState.mode == MotorMode::STOPPED || currentState.frequency == 0) {
+        Serial.printf("[MOTOR] Mode is STOPPED or frequency is 0 - no pulses but holding torque maintained\n");
         return;
     }
 
+    // Only reach here if mode is RUNNING and frequency > 0
     Serial.printf("[MOTOR] Starting RMT with frequency: %u Hz\n", currentState.frequency);
     
-    // Always stop transmission before reconfiguring to prevent conflicts
-    rmt_tx_stop(rmtChannel);
-    Serial.println("[MOTOR] RMT transmission stopped");
-    
-    // Small delay to ensure RMT has fully stopped
-    delayMicroseconds(10);
-
-    // Compute the pulse timing: APB clock divided by the RMT clock divider gives the
-    // timer tick rate (1 MHz here). Half the period is the high (and low) duration.
+    // Calculate timing for ATOM S3 Lite
     const uint32_t baseClock = APB_CLK_FREQ / kRmtClockDiv;
     uint32_t halfPeriod = baseClock / (currentState.frequency * 2U);
+    
+    // Conservative clamping for embedded device stability
     if (halfPeriod == 0) {
-        halfPeriod = 1;  // Clamp to the shortest possible pulse supported by hardware.
+        halfPeriod = 1;
         Serial.println("[MOTOR] WARNING: Half period clamped to 1 (frequency too high)");
+    } else if (halfPeriod > 16383) {  // More conservative limit for ATOM S3 Lite
+        halfPeriod = 16383;
+        Serial.printf("[MOTOR] WARNING: Half period clamped to %u (frequency too low)\n", halfPeriod);
     }
     
     Serial.printf("[MOTOR] Pulse timing - Base clock: %u Hz, Half period: %u ticks\n", baseClock, halfPeriod);
 
-    // Prepare a single RMT item: first level high, then low, both with the same duration.
-    // The RMT peripheral will loop this item and generate evenly spaced step pulses.
+    // Prepare pulse pattern
     rmt_item32_t pulse = {};
     pulse.level0 = 1;
     pulse.duration0 = halfPeriod;
     pulse.level1 = 0;
     pulse.duration1 = halfPeriod;
 
-    Serial.println("[MOTOR] Writing RMT pulse pattern");
-    // Write the pulse template to the RMT channel and start transmission in continuous mode.
-    esp_err_t writeResult = rmt_write_items(rmtChannel, &pulse, 1, false);  // false = wait for completion
+    Serial.println("[MOTOR] Writing new RMT pulse pattern");
+    
+    // Write new pattern (non-blocking for embedded stability)
+    esp_err_t writeResult = rmt_write_items(rmtChannel, &pulse, 1, true);
     if (writeResult != ESP_OK) {
         Serial.printf("[MOTOR] ERROR: rmt_write_items failed with code %d\n", writeResult);
+        recoverRMT();
         return;
     }
+    
+    // Small delay for ATOM S3 Lite
+    delayMicroseconds(200);
     
     Serial.println("[MOTOR] Starting RMT transmission");
     esp_err_t startResult = rmt_tx_start(rmtChannel, true);
     if (startResult != ESP_OK) {
         Serial.printf("[MOTOR] ERROR: rmt_tx_start failed with code %d\n", startResult);
+        recoverRMT();
         return;
     }
     
     Serial.printf("[MOTOR] RMT started successfully - Frequency: %u Hz, Direction: %s\n", 
                  currentState.frequency, 
                  currentState.direction ? "CW" : "CCW");
+}
+
+void MotorController::recoverRMT() {
+    Serial.println("[MOTOR] Attempting RMT recovery for ATOM S3 Lite");
+    
+    // Stop any ongoing transmission
+    rmt_tx_stop(rmtChannel);
+    delay(5);
+    
+    // Full RMT reset sequence optimized for embedded device
+    rmt_driver_uninstall(rmtChannel);
+    delay(10);  // Longer delay for ATOM S3 Lite
+    
+    // Reconfigure RMT
+    configureRMT();
+    
+    // Set safe state
+    digitalWrite(EN_PIN, HIGH);
+    currentState.mode = MotorMode::STOPPED;
+    
+    Serial.println("[MOTOR] RMT recovery completed, motor stopped safely");
+}
+
+void MotorController::setMicrostepPins(uint16_t microsteps) {
+    bool ms1State = LOW;
+    bool ms2State = LOW;
+    
+    // Configure MS1/MS2 pins for TMC2209 microstepping control
+    // TMC2209 microstepping table:
+    // MS2=0, MS1=0 -> 8 microsteps (default)
+    // MS2=0, MS1=1 -> 2 microsteps
+    // MS2=1, MS1=0 -> 4 microsteps
+    // MS2=1, MS1=1 -> 16 microsteps
+    // Note: TMC2209 doesn't support 1 microstep via MS pins
+    
+    switch (microsteps) {
+        case 1:
+            // TMC2209 doesn't support 1 microstep, fallback to 8
+            ms1State = LOW;
+            ms2State = LOW;
+            Serial.println("[MOTOR] WARNING: 1 microstep not supported by TMC2209, using 8");
+            break;
+        case 2:
+            ms1State = HIGH;
+            ms2State = LOW;
+            break;
+        case 4:
+            ms1State = LOW; 
+            ms2State = HIGH;
+            break;
+        case 8:
+            ms1State = LOW;
+            ms2State = LOW;  // Default TMC2209 setting
+            break;
+        case 16:
+            ms1State = HIGH;
+            ms2State = HIGH;
+            break;
+        default:
+            // Default to 8 microsteps for safety on educational device
+            ms1State = LOW;
+            ms2State = LOW;
+            Serial.printf("[MOTOR] WARNING: Unsupported microsteps %u, using 8\n", microsteps);
+            break;
+    }
+    
+    // Set physical pins - small delay for embedded device stability
+    digitalWrite(MS1_PIN, ms1State);
+    delayMicroseconds(10);
+    digitalWrite(MS2_PIN, ms2State);
+    delayMicroseconds(10);
+    
+    Serial.printf("[MOTOR] Microstepping pins set - MS1: %s, MS2: %s (targeting %u microsteps)\n",
+                 ms1State ? "HIGH" : "LOW", 
+                 ms2State ? "HIGH" : "LOW",
+                 microsteps);
 }
