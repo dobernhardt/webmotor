@@ -9,6 +9,8 @@ class MotorController {
 public:
     MotorController();
     void begin();
+    
+    // Primary control methods
     void setMicrosteps(uint16_t microsteps);
     uint16_t getMicrosteps() const;
     void setFrequency(uint32_t frequency);
@@ -17,16 +19,23 @@ public:
     bool getDirection() const;
     void setMode(MotorMode mode);
     MotorMode getMode() const;
-    void updateMotorState();
+    
+    // State management
     MotorState getMotorState() const;
-
+    bool isRunning() const;
+    
 private:
     MotorState currentState;
     rmt_channel_t rmtChannel;
+    bool rmtConfigured;
+    
+    // Internal methods
     void configureRMT();
     void updateRMT();
-    void recoverRMT();
-    void setMicrostepPins(uint16_t microsteps);  // Added missing method declaration
+    void setMicrostepPins(uint16_t microsteps);
+    void setPinStates();
+    uint16_t validateMicrosteps(uint16_t requested);
+    uint32_t validateFrequency(uint32_t requested);
 };
 
 #endif // MOTOR_CONTROLLER_H
