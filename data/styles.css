@@ -42,13 +42,21 @@ h1 {
 
 /* Status bar styling */
 .status-bar {
-    display: flex;
-    gap: 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
     margin-bottom: 20px;
     padding: 15px;
     background-color: #f8f9fa;
     border-radius: 6px;
     border: 1px solid #e9ecef;
+}
+
+@media (max-width: 600px) {
+    .status-bar {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
 }
 
 .status-item {
@@ -115,6 +123,28 @@ h1 {
     background-color: #e2e3e5;
     color: #6c757d;
     border: 1px solid #d6d8db;
+}
+
+.status-indicator.ap-mode {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeaa7;
+}
+
+.status-indicator.unknown {
+    background-color: #e2e3e5;
+    color: #6c757d;
+    border: 1px solid #d6d8db;
+}
+
+.network-info {
+    font-size: 12px;
+    color: #6c757d;
+    font-family: monospace;
+    background-color: #f8f9fa;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid #e9ecef;
 }
 
 .control-group {

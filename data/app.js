@@ -6,14 +6,42 @@ document.addEventListener('DOMContentLoaded', function() {
     // Connection state tracking
     let isConnected = false;
     let currentMotorMode = 'STOPPED';
+    let frequencyTimeout = null;
     
-    // Frequency slider handling
+    // Frequency slider handling with debouncing
     const frequencySlider = document.getElementById('frequency');
     const frequencyValue = document.getElementById('frequency-value');
     
     frequencySlider.addEventListener('input', function() {
+        // Update display immediately for responsive UI
         frequencyValue.textContent = this.value;
-        // Send frequency update to device
+        
+        // Clear existing timeout
+        if (frequencyTimeout) {
+            clearTimeout(frequencyTimeout);
+        }
+        
+        // Set new timeout for API call (500ms delay)
+        frequencyTimeout = setTimeout(() => {
+            sendMotorControl('frequency', parseInt(this.value));
+        }, 500);
+    });
+    
+    // Also send on mouseup for immediate response when user releases slider
+    frequencySlider.addEventListener('mouseup', function() {
+        if (frequencyTimeout) {
+            clearTimeout(frequencyTimeout);
+            frequencyTimeout = null;
+        }
+        sendMotorControl('frequency', parseInt(this.value));
+    });
+    
+    // Handle touch events for mobile devices
+    frequencySlider.addEventListener('touchend', function() {
+        if (frequencyTimeout) {
+            clearTimeout(frequencyTimeout);
+            frequencyTimeout = null;
+        }
         sendMotorControl('frequency', parseInt(this.value));
     });
     
@@ -178,6 +206,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Load current motor status from device
     function loadMotorStatus() {
+        // Load motor status
         sendRequest('/api/motor/status')
             .then(response => {
                 // Only log connection message when state changes
@@ -217,9 +246,42 @@ document.addEventListener('DOMContentLoaded', function() {
                     updateButtonStates();
                     updateStatus(`Connection lost: ${error.message}`);
                 }
-                // Always log retry attempts when disconnected
-                updateStatus(`Cannot connect to device: ${error.message}`);
             });
+        
+        // Load WiFi status
+        loadWiFiStatus();
+    }
+    
+    // Load WiFi status from device
+    function loadWiFiStatus() {
+        sendRequest('/api/wifi/status')
+            .then(response => {
+                updateWiFiStatus(response);
+            })
+            .catch(error => {
+                // WiFi status is less critical, just log without updating connection state
+                console.log('WiFi status request failed:', error);
+            });
+    }
+    
+    // Update WiFi status display
+    function updateWiFiStatus(wifiInfo) {
+        const wifiStatus = document.getElementById('wifi-status');
+        const networkInfo = document.getElementById('network-info');
+        
+        if (wifiInfo.isAccessPoint) {
+            wifiStatus.textContent = 'Access Point';
+            wifiStatus.className = 'status-indicator ap-mode';
+            networkInfo.textContent = `${wifiInfo.ssid} (${wifiInfo.ipAddress})`;
+        } else if (wifiInfo.isConnected) {
+            wifiStatus.textContent = 'Connected';
+            wifiStatus.className = 'status-indicator connected';
+            networkInfo.textContent = `${wifiInfo.ssid} (${wifiInfo.ipAddress})`;
+        } else {
+            wifiStatus.textContent = 'Disconnected';
+            wifiStatus.className = 'status-indicator disconnected';
+            networkInfo.textContent = '-';
+        }
     }
     
     // Periodic status updates (every 5 seconds)

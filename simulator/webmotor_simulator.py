@@ -28,7 +28,7 @@ class MotorSimulator:
     """Simulates the motor controller state"""
     
     def __init__(self):
-        self.frequency: int = 0
+        self.frequency: int = 100  # Default frequency changed to 100
         self.direction: bool = False  # False=CCW, True=CW
         self.microsteps: int = 1
         self.mode: str = "STOPPED"
@@ -72,15 +72,52 @@ class WiFiSimulator:
     """Simulates WiFi manager functionality"""
     
     def __init__(self):
-        self.ssid: Optional[str] = None
+        self.ssid: Optional[str] = "HomeNetwork"
         self.password: Optional[str] = None
+        self.is_access_point: bool = False
+        self.is_connected: bool = True
+        self.ip_address: str = "192.168.1.100"
         logger.info("WiFi simulator initialized")
     
     def save_config(self, ssid: str, password: str) -> None:
         """Save WiFi configuration"""
         self.ssid = ssid
         self.password = password
+        # Simulate connection after config
+        self.is_access_point = False
+        self.is_connected = True
+        self.ip_address = f"192.168.1.{100 + hash(ssid) % 150}"
         logger.info(f"WiFi config saved - SSID: {ssid}, Password: {'*' * len(password)}")
+    
+    def get_status(self) -> Dict[str, Any]:
+        """Get current WiFi status"""
+        status = {
+            "isAccessPoint": self.is_access_point,
+            "isConnected": self.is_connected,
+            "ssid": self.ssid if self.ssid else ("WebMotor-Config" if self.is_access_point else ""),
+            "ipAddress": self.ip_address if (self.is_connected or self.is_access_point) else ""
+        }
+        logger.info(f"WiFi status requested: {status}")
+        return status
+    
+    def set_mode(self, mode: str) -> None:
+        """Set WiFi mode for testing"""
+        if mode == "ap":
+            self.is_access_point = True
+            self.is_connected = False
+            self.ssid = "WebMotor-Config"
+            self.ip_address = "192.168.4.1"
+        elif mode == "connected":
+            self.is_access_point = False
+            self.is_connected = True
+            self.ssid = "HomeNetwork"
+            self.ip_address = "192.168.1.100"
+        elif mode == "disconnected":
+            self.is_access_point = False
+            self.is_connected = False
+            self.ssid = ""
+            self.ip_address = ""
+        logger.info(f"WiFi mode set to {mode}")
 
 class WebMotorSimulator:
     """Main simulator class"""
@@ -238,6 +275,52 @@ class WebMotorSimulator:
                     "success": False,
                     "error": "Internal server error"
                 }), 500
+        
+        # WiFi status endpoint
+        @self.app.route('/api/wifi/status', methods=['GET'])
+        def get_wifi_status():
+            try:
+                status = self.wifi.get_status()
+                return jsonify(status), 200
+            except Exception as e:
+                logger.error(f"Error getting WiFi status: {e}")
+                return jsonify({
+                    "success": False,
+                    "error": "Internal server error"
+                }), 500
+        
+        # Simulator control endpoint for testing WiFi modes
+        @self.app.route('/simulator/wifi/set-mode', methods=['POST'])
+        def set_wifi_mode():
+            try:
+                if not request.is_json:
+                    return jsonify({
+                        "success": False,
+                        "error": "Content-Type must be application/json"
+                    }), 400
+                
+                data = request.get_json()
+                mode = data.get('mode', '')
+                
+                if mode not in ['ap', 'connected', 'disconnected']:
+                    return jsonify({
+                        "success": False,
+                        "error": "Invalid mode. Use: ap, connected, or disconnected"
+                    }), 400
+                
+                self.wifi.set_mode(mode)
+                
+                return jsonify({
+                    "success": True,
+                    "wifiState": self.wifi.get_status()
+                }), 200
+                
+            except Exception as e:
+                logger.error(f"Error setting WiFi mode: {e}")
+                return jsonify({
+                    "success": False,
+                    "error": "Internal server error"
+                }), 500
     
     def _serve_static_file(self, filename: str):
         """Serve static files from the data directory"""
@@ -261,11 +344,18 @@ class WebMotorSimulator:
     
     def run(self, host='127.0.0.1', port=8080, debug=False):
         """Start the simulator server"""
+        wifi_status = f"Connected to {self.wifi.ssid}" if self.wifi.is_connected else "Disconnected"
+        
         logger.info(f"Starting WebMotor simulator on http://{host}:{port}")
-        logger.info("Motor control endpoints:")
+        logger.info("API endpoints:")
         logger.info("  GET  /api/motor/status")
         logger.info("  POST /api/motor/control")
+        logger.info("  GET  /api/wifi/status")
         logger.info("  POST /api/wifi/config")
+        logger.info("Simulator control endpoints:")
+        logger.info("  POST /simulator/wifi/set-mode")
+        logger.info(f"WiFi Status: {wifi_status}")
+        logger.info(f"Motor Status: {self.motor.mode} ({self.motor.frequency} Hz)")
         logger.info("Web UI available at root URL")
         
         self.app.run(host=host, port=port, debug=debug)

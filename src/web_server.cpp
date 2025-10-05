@@ -62,6 +62,11 @@ void WebServerController::registerRoutes() {
         this->handleWiFiConfig(); 
     });
     
+    server.on("/api/wifi/status", HTTP_GET, [this]() { 
+        Serial.println("[API] GET /api/wifi/status");
+        this->handleWiFiStatus(); 
+    });
+    
     // Static file routes
     server.on("/", [this]() { 
         Serial.println("[WEB] Serving index.html");
@@ -251,6 +256,39 @@ void WebServerController::handleWiFiConfig() {
     
     Serial.println("[WIFI] Credentials saved successfully");
     sendJson(200, "{\"status\":\"credentials saved\"}");
+}
+
+void WebServerController::handleWiFiStatus() {
+    Serial.println("[API] Processing WiFi status request");
+    
+    if (wifi == nullptr) {
+        Serial.println("[API] ERROR: Wi-Fi manager unavailable");
+        sendJson(500, "{\"error\":\"Wi-Fi manager unavailable\"}");
+        return;
+    }
+
+    JsonDocument doc;
+    doc["isAccessPoint"] = wifi->isAccessPoint();
+    doc["isConnected"] = wifi->isConnected();
+    
+    if (!wifi->isAccessPoint() && wifi->isConnected()) {
+        doc["ssid"] = wifi->getSSID();
+        doc["ipAddress"] = WiFi.localIP().toString();
+    } else if (wifi->isAccessPoint()) {
+        doc["ssid"] = "WebMotor-Config";
+        doc["ipAddress"] = WiFi.softAPIP().toString();
+    } else {
+        doc["ssid"] = "";
+        doc["ipAddress"] = "";
+    }
+
+    String jsonResponse;
+    serializeJson(doc, jsonResponse);
+    
+    Serial.print("[API] Sending WiFi status: ");
+    Serial.println(jsonResponse);
+    
+    sendJson(200, jsonResponse);
 }
 
 void WebServerController::sendJson(int statusCode, const String& payload) {

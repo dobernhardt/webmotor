@@ -22,6 +22,14 @@
                     <span class="status-label">Motor:</span>
                     <span id="motor-status" class="motor-status unknown">Unknown</span>
                 </div>
+                <div class="status-item">
+                    <span class="status-label">WiFi:</span>
+                    <span id="wifi-status" class="status-indicator unknown">Unknown</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Network:</span>
+                    <span id="network-info" class="network-info">-</span>
+                </div>
             </div>
             
             <div class="control-group">
@@ -38,9 +46,9 @@
             <div class="control-group">
                 <label for="frequency">Frequency (Hz):</label>
                 <div class="frequency-container">
-                    <input type="range" id="frequency" min="0" max="10000" value="0" step="10">
+                    <input type="range" id="frequency" min="0" max="10000" value="100" step="10">
                     <div class="frequency-display">
-                        <span id="frequency-value">0</span>
+                        <span id="frequency-value">100</span>
                     </div>
                 </div>
             </div>
