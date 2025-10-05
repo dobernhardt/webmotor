@@ -11,11 +11,11 @@
 #endif
 
 // Pin Assignments
-#define STEP_PIN 4
-#define DIR_PIN 5
-#define EN_PIN 6
-#define MS1_PIN 7
-#define MS2_PIN 8
+#define STEP_PIN 7
+#define DIR_PIN 8
+#define EN_PIN 38
+#define MS1_PIN 5
+#define MS2_PIN 6
 
 // Motor Control Constants
 #define MAX_FREQUENCY 10000
