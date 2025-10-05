@@ -1,6 +1,7 @@
 #include "web_server.h"
 #include <WiFi.h>
 #include <ArduinoJson.h>
+#include <SPIFFS.h>
 #include "motor_controller.h"
 #include "wifi_manager.h"
 
@@ -16,6 +17,13 @@ WebServerController::WebServerController()
 
 void WebServerController::begin(MotorController& motorController, WifiManager& wifiManager) {
     Serial.println("[WEB] Initializing WebServer...");
+    
+    // Initialize SPIFFS
+    if (!SPIFFS.begin(true)) {
+        Serial.println("[WEB] ERROR: SPIFFS mount failed");
+        return;
+    }
+    Serial.println("[WEB] SPIFFS mounted successfully");
     
     motor = &motorController;
     wifi = &wifiManager;
@@ -38,6 +46,7 @@ void WebServerController::handle() {
 void WebServerController::registerRoutes() {
     Serial.println("[WEB] Setting up API endpoints...");
     
+    // API routes
     server.on("/api/motor/status", HTTP_GET, [this]() { 
         Serial.println("[API] GET /api/motor/status");
         this->handleMotorStatus(); 
@@ -53,19 +62,27 @@ void WebServerController::registerRoutes() {
         this->handleWiFiConfig(); 
     });
     
-    // Simple test page
+    // Static file routes
     server.on("/", [this]() { 
-        Serial.println("[WEB] Root page requested");
-        String html = "<!DOCTYPE html><html><head><title>WebMotor</title></head><body>";
-        html += "<h1>WebMotor Controller</h1>";
-        html += "<p>ATOM S3 Lite Educational Project</p>";
-        html += "<h2>API Endpoints:</h2><ul>";
-        html += "<li>GET <a href='/api/motor/status'>/api/motor/status</a></li>";
-        html += "<li>POST /api/motor/control</li>";
-        html += "<li>POST /api/wifi/config</li></ul>";
-        html += "<p>Free Memory: " + String(ESP.getFreeHeap()) + " bytes</p>";
-        html += "</body></html>";
-        server.send(200, "text/html", html);
+        Serial.println("[WEB] Serving index.html");
+        this->serveFile("/index.html", "text/html");
+    });
+    
+    server.on("/app.js", [this]() { 
+        Serial.println("[WEB] Serving app.js");
+        this->serveFile("/app.js", "application/javascript");
+    });
+    
+    server.on("/styles.css", [this]() { 
+        Serial.println("[WEB] Serving styles.css");
+        this->serveFile("/styles.css", "text/css");
+    });
+    
+    // Catch-all for 404
+    server.onNotFound([this]() {
+        Serial.print("[WEB] 404 - File not found: ");
+        Serial.println(server.uri());
+        server.send(404, "text/plain", "File not found");
     });
     
     Serial.println("[WEB] Routes registered successfully");
@@ -243,4 +260,25 @@ void WebServerController::sendJson(int statusCode, const String& payload) {
     Serial.println(payload);
     
     server.send(statusCode, "application/json", payload);
+}
+
+void WebServerController::serveFile(const String& path, const String& contentType) {
+    if (SPIFFS.exists(path)) {
+        File file = SPIFFS.open(path, "r");
+        if (file) {
+            Serial.print("[WEB] Serving file: ");
+            Serial.print(path);
+            Serial.print(" (");
+            Serial.print(file.size());
+            Serial.println(" bytes)");
+            
+            server.streamFile(file, contentType);
+            file.close();
+            return;
+        }
+    }
+    
+    Serial.print("[WEB] ERROR: File not found - ");
+    Serial.println(path);
+    server.send(404, "text/plain", "File not found");
 }

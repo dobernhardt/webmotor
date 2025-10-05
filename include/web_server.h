@@ -25,6 +25,7 @@ private:
     void handleMotorControl();
     void handleWiFiConfig();
     void sendJson(int statusCode, const String& payload);
+    void serveFile(const String& path, const String& contentType); // Add this line
 };
 
 #endif // WEB_SERVER_H
