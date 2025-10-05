@@ -78,7 +78,7 @@ void WebServerController::handleMotorStatus() {
         cachedState = motor->getMotorState();
     }
 
-    StaticJsonDocument<200> doc;
+    JsonDocument doc;
     doc["microsteps"] = cachedState.microsteps;
     doc["frequency"] = cachedState.frequency;
     doc["direction"] = cachedState.direction;
@@ -144,7 +144,7 @@ void WebServerController::handleMotorControl() {
     Serial.print("[API] Request payload: ");
     Serial.println(body);
 
-    StaticJsonDocument<256> doc;
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, body);
 
     if (error) {
@@ -160,26 +160,26 @@ void WebServerController::handleMotorControl() {
         return;
     }
 
-    if (doc.containsKey("microsteps")) {
+    if (!doc["microsteps"].isNull()) {
         uint16_t microsteps = doc["microsteps"].as<uint16_t>();
         Serial.print("[MOTOR] Setting microsteps: ");
         Serial.println(microsteps);
         motor->setMicrosteps(microsteps);
     }
-    if (doc.containsKey("frequency")) {
+    if (!doc["frequency"].isNull()) {
         uint32_t frequency = doc["frequency"].as<uint32_t>();
         Serial.print("[MOTOR] Setting frequency: ");
         Serial.print(frequency);
         Serial.println(" Hz");
         motor->setFrequency(frequency);
     }
-    if (doc.containsKey("direction")) {
+    if (!doc["direction"].isNull()) {
         bool direction = doc["direction"].as<bool>();
         Serial.print("[MOTOR] Setting direction: ");
         Serial.println(direction ? "CW" : "CCW");
         motor->setDirection(direction);
     }
-    if (doc.containsKey("mode")) {
+    if (!doc["mode"].isNull()) {
         const MotorMode mode = parseMode(doc["mode"], motor->getMode());
         Serial.print("[MOTOR] Setting mode: ");
         Serial.println((int)mode);
@@ -210,9 +210,9 @@ void WebServerController::handleWiFiConfig() {
     Serial.print("[API] WiFi config payload: ");
     Serial.println(body);
 
-    StaticJsonDocument<256> doc;
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, body);
-    if (error || !doc.containsKey("ssid") || !doc.containsKey("password")) {
+    if (error || doc["ssid"].isNull() || doc["password"].isNull()) {
         Serial.print("[API] ERROR: WiFi JSON parse failed - ");
         if (error) {
             Serial.println(error.c_str());
