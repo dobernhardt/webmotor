@@ -27,6 +27,7 @@ private:
     void handleWiFiStatus();
     void sendJson(int statusCode, const String& payload);
     void serveFile(const String& path, const String& contentType);
+    void updateStatusLED();
 };
 
 #endif // WEB_SERVER_H

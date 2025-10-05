@@ -28,12 +28,21 @@ MotorController::MotorController()
 }
 
 void MotorController::begin() {
+    Serial.println("[MOTOR] Initializing motor controller");
+    
     pinMode(DIR_PIN, OUTPUT);
     digitalWrite(DIR_PIN, currentState.direction ? HIGH : LOW);
+    Serial.printf("[MOTOR] Direction pin set: %s\n", currentState.direction ? "HIGH (CW)" : "LOW (CCW)");
+    
     pinMode(EN_PIN, OUTPUT);
     digitalWrite(EN_PIN, LOW);
+    Serial.println("[MOTOR] Enable pin set LOW (motor enabled)");
+    
     configureRMT();
+    Serial.println("[MOTOR] RMT configured");
+    
     updateRMT();
+    Serial.println("[MOTOR] Motor controller initialized");
 }
 
 void MotorController::reset() {
@@ -63,9 +72,15 @@ uint16_t MotorController::getMicrosteps() const {
 }
 
 void MotorController::setFrequency(uint32_t frequency) {
+    Serial.printf("[MOTOR] setFrequency called: %u Hz (max: %u)\n", frequency, kMaxFrequency);
+    
     if (frequency <= kMaxFrequency) {
+        uint32_t oldFrequency = currentState.frequency;
         currentState.frequency = frequency;
+        Serial.printf("[MOTOR] Frequency changed: %u -> %u Hz\n", oldFrequency, frequency);
         updateRMT();
+    } else {
+        Serial.printf("[MOTOR] ERROR: Frequency %u exceeds maximum %u Hz\n", frequency, kMaxFrequency);
     }
 }
 
@@ -83,7 +98,9 @@ bool MotorController::getDirection() const {
 }
 
 void MotorController::setMode(MotorMode mode) {
+    MotorMode oldMode = currentState.mode;
     currentState.mode = mode;
+    Serial.printf("[MOTOR] Mode changed: %d -> %d\n", static_cast<int>(oldMode), static_cast<int>(mode));
     updateRMT();
 }
 
@@ -127,22 +144,39 @@ void MotorController::configureRMT() {
 }
 
 void MotorController::updateRMT() {
+    Serial.println("[MOTOR] updateRMT() called");
+    
     // If the motor should be released or the target speed is zero, stop sending pulses
     // and disable the stepper driver (EN high disables most drivers).
     if (currentState.mode == MotorMode::RELEASED || currentState.frequency == 0) {
+        Serial.printf("[MOTOR] Stopping RMT - Mode: %s, Frequency: %u\n", 
+                     (currentState.mode == MotorMode::RELEASED) ? "RELEASED" : "FREQ_ZERO", 
+                     currentState.frequency);
         rmt_tx_stop(rmtChannel);
         digitalWrite(EN_PIN, HIGH);
+        Serial.println("[MOTOR] Motor disabled (EN=HIGH)");
         return;
     }
 
     // Make sure the driver is enabled while we may emit pulses.
     digitalWrite(EN_PIN, LOW);
+    Serial.println("[MOTOR] Motor enabled (EN=LOW)");
 
     // Modes like STOPPED keep the driver enabled but do not emit pulses.
     if (currentState.mode != MotorMode::RUNNING) {
+        Serial.printf("[MOTOR] Motor mode is %d (not RUNNING), stopping RMT\n", static_cast<int>(currentState.mode));
         rmt_tx_stop(rmtChannel);
         return;
     }
+
+    Serial.printf("[MOTOR] Starting RMT with frequency: %u Hz\n", currentState.frequency);
+    
+    // Always stop transmission before reconfiguring to prevent conflicts
+    rmt_tx_stop(rmtChannel);
+    Serial.println("[MOTOR] RMT transmission stopped");
+    
+    // Small delay to ensure RMT has fully stopped
+    delayMicroseconds(10);
 
     // Compute the pulse timing: APB clock divided by the RMT clock divider gives the
     // timer tick rate (1 MHz here). Half the period is the high (and low) duration.
@@ -150,7 +184,10 @@ void MotorController::updateRMT() {
     uint32_t halfPeriod = baseClock / (currentState.frequency * 2U);
     if (halfPeriod == 0) {
         halfPeriod = 1;  // Clamp to the shortest possible pulse supported by hardware.
+        Serial.println("[MOTOR] WARNING: Half period clamped to 1 (frequency too high)");
     }
+    
+    Serial.printf("[MOTOR] Pulse timing - Base clock: %u Hz, Half period: %u ticks\n", baseClock, halfPeriod);
 
     // Prepare a single RMT item: first level high, then low, both with the same duration.
     // The RMT peripheral will loop this item and generate evenly spaced step pulses.
@@ -160,7 +197,22 @@ void MotorController::updateRMT() {
     pulse.level1 = 0;
     pulse.duration1 = halfPeriod;
 
+    Serial.println("[MOTOR] Writing RMT pulse pattern");
     // Write the pulse template to the RMT channel and start transmission in continuous mode.
-    rmt_write_items(rmtChannel, &pulse, 1, true);
-    rmt_tx_start(rmtChannel, true);
+    esp_err_t writeResult = rmt_write_items(rmtChannel, &pulse, 1, false);  // false = wait for completion
+    if (writeResult != ESP_OK) {
+        Serial.printf("[MOTOR] ERROR: rmt_write_items failed with code %d\n", writeResult);
+        return;
+    }
+    
+    Serial.println("[MOTOR] Starting RMT transmission");
+    esp_err_t startResult = rmt_tx_start(rmtChannel, true);
+    if (startResult != ESP_OK) {
+        Serial.printf("[MOTOR] ERROR: rmt_tx_start failed with code %d\n", startResult);
+        return;
+    }
+    
+    Serial.printf("[MOTOR] RMT started successfully - Frequency: %u Hz, Direction: %s\n", 
+                 currentState.frequency, 
+                 currentState.direction ? "CW" : "CCW");
 }

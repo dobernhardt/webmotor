@@ -2,8 +2,12 @@
 #include <WiFi.h>
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
+#include <FastLED.h>
 #include "motor_controller.h"
 #include "wifi_manager.h"
+
+// Reference to the LED array from main.cpp
+extern CRGB leds[];
 
 namespace {
 constexpr int kHttpPort = 80;
@@ -37,6 +41,9 @@ void WebServerController::begin(MotorController& motorController, WifiManager& w
     Serial.print("[WEB] HTTP server listening on port ");
     Serial.println(kHttpPort);
     Serial.println("[WEB] WebServer initialization complete");
+    
+    // Initial LED update based on current state
+    updateStatusLED();
 }
 
 void WebServerController::handle() {
@@ -210,6 +217,10 @@ void WebServerController::handleMotorControl() {
 
     cachedState = motor->getMotorState();
     Serial.println("[API] Motor control completed successfully");
+    
+    // Update LED to reflect new motor state
+    updateStatusLED();
+    
     sendJson(200, "{\"status\":\"updated\"}");
 }
 
@@ -255,6 +266,10 @@ void WebServerController::handleWiFiConfig() {
     wifi->saveCredentials(ssid, password);
     
     Serial.println("[WIFI] Credentials saved successfully");
+    
+    // Update LED to indicate configuration change
+    updateStatusLED();
+    
     sendJson(200, "{\"status\":\"credentials saved\"}");
 }
 
@@ -319,4 +334,24 @@ void WebServerController::serveFile(const String& path, const String& contentTyp
     Serial.print("[WEB] ERROR: File not found - ");
     Serial.println(path);
     server.send(404, "text/plain", "File not found");
+}
+
+void WebServerController::updateStatusLED() {
+    if (!motor || !wifi) return;
+    
+    // This method provides immediate LED feedback for web API calls
+    // The main loop handles the continuous LED state management
+    
+    Serial.println("[LED] Updating status LED from web server");
+    
+    // Brief visual confirmation of web API interaction
+    // Flash white briefly to indicate web command received
+    leds[0] = CRGB::White;
+    FastLED.show();
+    delay(50);  // Very brief flash
+    leds[0] = CRGB::Black;
+    FastLED.show();
+    delay(50);
+    
+    // The main loop will update to the appropriate state based on current system status
 }

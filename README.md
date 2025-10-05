@@ -9,6 +9,47 @@ WebMotor is an educational Arduino framework-based firmware designed for the M5S
 - Network-based control via REST API and a web interface over Wi-Fi, with an access point (AP) fallback.
 - mDNS discoverability for easy access.
 - Persistent storage of Wi-Fi credentials.
+- **Visual status indication** via the ATOM S3 Lite's built-in RGB LED.
+
+## LED Status Indicators
+
+The ATOM S3 Lite's built-in RGB LED provides real-time visual feedback about the system's operational status. This is particularly useful for educational demonstrations and debugging without needing serial output.
+
+### Boot Sequence
+| Pattern | Description |
+|---------|-------------|
+| Fast red blink | System booting up |
+| 2 blue blinks | Wi-Fi Manager initializing |
+| 3 green blinks | Motor Controller initializing |
+| 4 yellow blinks | Web Server initializing |
+| 3 white blinks | Initialization complete |
+
+### Operational Status Patterns
+| Pattern | Status | Description |
+|---------|--------|-------------|
+| **Slow green pulse** | Wi-Fi Connected | System ready, connected to Wi-Fi network |
+| **Orange/Blue alternating** | Access Point Mode | Device in setup mode, connect to configure Wi-Fi |
+| **Medium red blink** | Wi-Fi Disconnected | Lost connection to Wi-Fi network |
+| **Very slow blue pulse** | Motor Idle | Motor idle, Wi-Fi connected |
+| **Fast green pulse** | Motor Running Forward | Motor actively running in forward direction |
+| **Fast purple pulse** | Motor Running Reverse | Motor actively running in reverse direction |
+| **Solid yellow** | Motor Stopped | Motor stopped (powered but not moving) |
+| **Slow cyan pulse** | Motor Released | Motor released (unpowered) |
+| **Fast red/white alternating** | System Error | Critical system error detected |
+| **Dim purple quick pulse** | Heartbeat | Brief pulse every 10 seconds (system alive indicator) |
+
+### LED State Priority System
+The LED follows a priority hierarchy to ensure the most critical information is always displayed:
+
+1. **Heartbeat** (temporary override every 10s)
+2. **Wi-Fi Disconnected** (critical connectivity issue)
+3. **Access Point Mode** (setup required)
+4. **Motor States** (when motor is active)
+5. **Wi-Fi Connected** (normal operation)
+6. **Motor Idle** (default state)
+
+### Web API Visual Feedback
+When commands are received via the web interface or REST API, the LED briefly flashes white to provide immediate confirmation that the command was received, before returning to the appropriate status pattern.
 
 ## Project Structure
 ```
