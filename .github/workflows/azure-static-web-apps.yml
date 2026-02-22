@@ -1,0 +1,94 @@
+name: Azure Static Web Apps CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - add_cloud
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - main
+
+jobs:
+  build_and_deploy_job:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    runs-on: ubuntu-latest
+    name: Build and Deploy Job
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+          lfs: false
+          fetch-depth: 0
+      
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v0.10.2
+        with:
+          versionSpec: '5.x'
+      
+      - name: Determine Version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v0.10.2
+        continue-on-error: true
+      
+      - name: Generate Version Info
+        run: |
+          # Use GitVersion outputs if available, otherwise use defaults
+          VERSION="${{ steps.gitversion.outputs.semVer }}"
+          FULL_VERSION="${{ steps.gitversion.outputs.fullSemVer }}"
+          BRANCH="${{ steps.gitversion.outputs.branchName }}"
+          SHA="${{ steps.gitversion.outputs.sha }}"
+          SHORT_SHA="${{ steps.gitversion.outputs.shortSha }}"
+          MAJOR_MINOR_PATCH="${{ steps.gitversion.outputs.majorMinorPatch }}"
+          
+          # Fallback to git info if GitVersion failed
+          if [ -z "$VERSION" ]; then
+            VERSION="0.1.0-dev"
+            FULL_VERSION="0.1.0-dev"
+            BRANCH="${{ github.ref_name }}"
+            SHA="${{ github.sha }}"
+            SHORT_SHA="${GITHUB_SHA:0:7}"
+            MAJOR_MINOR_PATCH="0.1.0"
+          fi
+          
+          cat > api/version.json << EOF
+          {
+            "version": "$VERSION",
+            "semVer": "$VERSION",
+            "fullSemVer": "$FULL_VERSION",
+            "informationalVersion": "$FULL_VERSION",
+            "branchName": "$BRANCH",
+            "sha": "$SHA",
+            "shortSha": "$SHORT_SHA",
+            "majorMinorPatch": "$MAJOR_MINOR_PATCH",
+            "build_timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "github_run_id": "${{ github.run_id }}",
+            "github_run_number": "${{ github.run_number }}"
+          }
+          EOF
+          cat api/version.json
+          cp api/version.json cloud-frontend/version.json
+      
+      - name: Build And Deploy
+        id: builddeploy
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "/cloud-frontend"
+          api_location: "/api"
+          output_location: ""
+
+  close_pull_request_job:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: Close Pull Request Job
+    steps:
+      - name: Close Pull Request
+        id: closepullrequest
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: "close"

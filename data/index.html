@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebMotor Control</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>WebMotor Control</h1>
+        
+        <div class="control-card">
+            <h2>Motor Control</h2>
+            
+            <div class="status-bar">
+                <div class="status-item">
+                    <span class="status-label">Connection:</span>
+                    <span id="connection-status" class="status-indicator disconnected">Disconnected</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Motor:</span>
+                    <span id="motor-status" class="motor-status unknown">Unknown</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">WiFi:</span>
+                    <span id="wifi-status" class="status-indicator unknown">Unknown</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Network:</span>
+                    <span id="network-info" class="network-info">-</span>
+                </div>
+            </div>
+            
+            <div class="control-group">
+                <label for="microsteps">Microstepping:</label>
+                <select id="microsteps">
+                    <option value="1">Full Step (1/1)</option>
+                    <option value="2">Half Step (1/2)</option>
+                    <option value="4">Quarter Step (1/4)</option>
+                    <option value="8">Eighth Step (1/8)</option>
+                    <option value="16">Sixteenth Step (1/16)</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label for="frequency">Frequency (Hz):</label>
+                <div class="frequency-container">
+                    <input type="range" id="frequency" min="0" max="10000" value="100" step="10">
+                    <div class="frequency-display">
+                        <span id="frequency-value">100</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>Direction:</label>
+                <div class="toggle-container">
+                    <input type="checkbox" id="direction" class="toggle-input">
+                    <label for="direction" class="toggle-switch"></label>
+                    <span class="toggle-text" id="direction-text">CCW</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>Mode:</label>
+                <div class="mode-buttons">
+                    <button id="start" class="btn btn-primary">Start</button>
+                    <button id="stop" class="btn btn-secondary">Stop</button>
+                    <button id="release" class="btn btn-info">Release</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="control-card">
+            <h2>WiFi Configuration</h2>
+            
+            <div class="control-group">
+                <label for="ssid">SSID:</label>
+                <input type="text" id="ssid" placeholder="Enter SSID">
+            </div>
+
+            <div class="control-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" placeholder="Enter Password">
+            </div>
+
+            <button id="save-wifi" class="btn btn-primary">Save WiFi Config</button>
+        </div>
+
+        <div class="control-card">
+            <h2>☁️ Cloud Configuration</h2>
+            
+            <div class="control-group">
+                <label for="cloud-endpoint">Azure Function Endpoint:</label>
+                <input type="text" id="cloud-endpoint" placeholder="https://your-function-app.azurewebsites.net/api">
+            </div>
+
+            <div class="control-group">
+                <label for="cloud-api-key">API Key:</label>
+                <input type="password" id="cloud-api-key" placeholder="Enter API Key">
+            </div>
+
+            <div class="control-group">
+                <label>Enable Cloud Sync:</label>
+                <div class="toggle-container">
+                    <input type="checkbox" id="cloud-enabled" class="toggle-input">
+                    <label for="cloud-enabled" class="toggle-switch"></label>
+                    <span class="toggle-text" id="cloud-enabled-text">Disabled</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <button id="save-cloud" class="btn btn-primary" style="margin-right: 10px;">Save Cloud Config</button>
+                <button id="test-cloud" class="btn btn-secondary">Test Connection</button>
+            </div>
+        </div>
+
+        <div class="status">
+            <h2>Status</h2>
+            <pre id="status-output">Ready...</pre>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

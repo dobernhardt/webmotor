@@ -1,0 +1,273 @@
+openapi: 3.0.3
+info:
+  title: WebMotor Control API
+  description: REST API for controlling stepper motor via ATOM S3 LITE device
+  version: 1.0.0
+  contact:
+    name: WebMotor Educational Project
+
+servers:
+  - url: http://{device_ip}
+    description: WebMotor device (Station mode)
+    variables:
+      device_ip:
+        default: 192.168.1.100
+        description: IP address of the ATOM S3 LITE device
+  - url: http://192.168.4.1
+    description: WebMotor device (Access Point mode)
+
+paths:
+  /api/motor/status:
+    get:
+      summary: Get current motor status
+      description: Retrieve the current state of the stepper motor including frequency, direction, microstepping, and mode
+      operationId: getMotorStatus
+      responses:
+        '200':
+          description: Motor status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MotorStatus'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/motor/control:
+    post:
+      summary: Control motor parameters
+      description: Update motor parameters such as frequency, direction, microstepping, or operating mode
+      operationId: controlMotor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MotorControlRequest'
+            examples:
+              setFrequency:
+                summary: Set motor frequency
+                value:
+                  frequency: 1000
+              setDirection:
+                summary: Set motor direction
+                value:
+                  direction: true
+              setMicrostepping:
+                summary: Set microstepping
+                value:
+                  microsteps: 16
+              startMotor:
+                summary: Start motor
+                value:
+                  mode: "RUNNING"
+              stopMotor:
+                summary: Stop motor
+                value:
+                  mode: "STOPPED"
+              releaseMotor:
+                summary: Release motor
+                value:
+                  mode: "RELEASED"
+      responses:
+        '200':
+          description: Motor control command executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/wifi/config:
+    post:
+      summary: Configure WiFi credentials
+      description: Save new WiFi SSID and password for station mode connection
+      operationId: configureWifi
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WifiConfigRequest'
+      responses:
+        '200':
+          description: WiFi credentials saved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Invalid WiFi credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    MotorStatus:
+      type: object
+      description: Current status of the stepper motor
+      properties:
+        frequency:
+          type: integer
+          format: uint32
+          minimum: 0
+          maximum: 10000
+          description: Current motor frequency in Hz
+          example: 1000
+        direction:
+          type: boolean
+          description: Motor rotation direction (true=CW, false=CCW)
+          example: true
+        microsteps:
+          type: integer
+          format: uint16
+          enum: [1, 2, 4, 8, 16]
+          description: Current microstepping setting
+          example: 16
+        mode:
+          type: string
+          enum: ["RUNNING", "STOPPED", "RELEASED"]
+          description: Current motor operating mode
+          example: "STOPPED"
+        connected:
+          type: boolean
+          description: Device connection status
+          example: true
+      required:
+        - frequency
+        - direction
+        - microsteps
+        - mode
+        - connected
+
+    MotorControlRequest:
+      type: object
+      description: Motor control parameters (at least one parameter required)
+      properties:
+        frequency:
+          type: integer
+          format: uint32
+          minimum: 0
+          maximum: 10000
+          description: Target motor frequency in Hz
+          example: 1500
+        direction:
+          type: boolean
+          description: Motor rotation direction (true=CW, false=CCW)
+          example: false
+        microsteps:
+          type: integer
+          format: uint16
+          enum: [1, 2, 4, 8, 16]
+          description: Microstepping configuration
+          example: 8
+        mode:
+          type: string
+          enum: ["RUNNING", "STOPPED", "RELEASED"]
+          description: Motor operating mode
+          example: "RUNNING"
+      minProperties: 1
+      additionalProperties: false
+
+    WifiConfigRequest:
+      type: object
+      description: WiFi network credentials
+      properties:
+        ssid:
+          type: string
+          minLength: 1
+          maxLength: 32
+          description: WiFi network SSID
+          example: "MyHomeWiFi"
+        password:
+          type: string
+          minLength: 8
+          maxLength: 63
+          description: WiFi network password
+          example: "mypassword123"
+      required:
+        - ssid
+        - password
+      additionalProperties: false
+
+    SuccessResponse:
+      type: object
+      description: Success response
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          description: Success message
+          example: "Command executed successfully"
+      required:
+        - success
+
+    ErrorResponse:
+      type: object
+      description: Error response
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          description: Error message
+          example: "Invalid parameter value"
+      required:
+        - success
+        - error
+
+  examples:
+    MotorStatusExample:
+      summary: Example motor status
+      value:
+        frequency: 2000
+        direction: true
+        microsteps: 16
+        mode: "RUNNING"
+        connected: true
+
+    StartMotorExample:
+      summary: Start motor at 1000 Hz CW
+      value:
+        frequency: 1000
+        direction: true
+        mode: "RUNNING"
+
+    WifiConfigExample:
+      summary: Configure home WiFi
+      value:
+        ssid: "HomeNetwork"
+        password: "mypassword123"
+
+tags:
+  - name: Motor Control
+    description: Operations for controlling the stepper motor
+  - name: WiFi Configuration
+    description: Operations for WiFi network configuration
+  - name: Status
+    description: Device and motor status information
