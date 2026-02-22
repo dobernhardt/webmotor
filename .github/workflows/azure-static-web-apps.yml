@@ -20,6 +20,38 @@ jobs:
         with:
           submodules: true
           lfs: false
+          fetch-depth: 0
+      
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v0.10.2
+        with:
+          versionSpec: '5.x'
+      
+      - name: Determine Version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v0.10.2
+        with:
+          useConfigFile: true
+          configFilePath: GitVersion.yml
+      
+      - name: Generate Version Info
+        run: |
+          cat > api/version.json << EOF
+          {
+            "version": "${{ steps.gitversion.outputs.semVer }}",
+            "fullSemVer": "${{ steps.gitversion.outputs.fullSemVer }}",
+            "informationalVersion": "${{ steps.gitversion.outputs.informationalVersion }}",
+            "branchName": "${{ steps.gitversion.outputs.branchName }}",
+            "sha": "${{ steps.gitversion.outputs.sha }}",
+            "shortSha": "${{ steps.gitversion.outputs.shortSha }}",
+            "majorMinorPatch": "${{ steps.gitversion.outputs.majorMinorPatch }}",
+            "build_timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "github_run_id": "${{ github.run_id }}",
+            "github_run_number": "${{ github.run_number }}"
+          }
+          EOF
+          cat api/version.json
+          cp api/version.json cloud-frontend/version.json
       
       - name: Build And Deploy
         id: builddeploy

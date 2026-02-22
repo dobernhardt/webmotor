@@ -9,6 +9,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from azure.storage.queue import QueueClient
 from azure.data.tables import TableServiceClient, UpdateMode
 
@@ -278,9 +279,22 @@ def get_state(req: func.HttpRequest) -> func.HttpResponse:
 def health_check(req: func.HttpRequest) -> func.HttpResponse:
     """
     GET /api/health
-    Health check endpoint
+    Health check endpoint with version information
     """
-    return create_success_response({
+    response_data = {
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat()
-    })
+    }
+    
+    # Try to load version info
+    try:
+        version_file = Path(__file__).parent / "version.json"
+        if version_file.exists():
+            with open(version_file, 'r') as f:
+                version_info = json.load(f)
+                response_data["version"] = version_info
+    except Exception as e:
+        logging.warning(f"Could not load version info: {e}")
+        response_data["version"] = {"error": "Version info not available"}
+    
+    return create_success_response(response_data)

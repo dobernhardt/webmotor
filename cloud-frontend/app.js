@@ -14,6 +14,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load saved configuration from localStorage
     loadConfiguration();
     
+    // Load version information
+    loadVersionInfo();
+    
     // Configuration handlers
     document.getElementById('save-config').addEventListener('click', saveConfiguration);
     document.getElementById('test-connection').addEventListener('click', testConnection);
@@ -336,5 +339,35 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         statusOutput.scrollTop = statusOutput.scrollHeight;
+    }
+    
+    // Load and display version information
+    async function loadVersionInfo() {
+        try {
+            const response = await fetch(`${apiEndpoint}/health`);
+            if (response.ok) {
+                const data = await response.json();
+                const versionDiv = document.getElementById('version-info');
+                
+                if (data.version && !data.version.error) {
+                    const v = data.version;
+                    const githubUrl = `https://github.com/dobernhardt/webmotor/commit/${v.sha || ''}`;
+                    versionDiv.innerHTML = `
+                        <small>
+                            Version: ${v.semVer || v.version || 'unknown'} | 
+                            Build: ${v.build_timestamp || 'unknown'} | 
+                            Commit: <a href="${githubUrl}" 
+                                      target="_blank" rel="noopener">${v.shortSha || 'unknown'}</a> | 
+                            Branch: ${v.branchName || 'unknown'}
+                        </small>
+                    `;
+                } else {
+                    versionDiv.innerHTML = '<small>Version info not available</small>';
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load version info:', error);
+            document.getElementById('version-info').innerHTML = '<small>Version info unavailable</small>';
+        }
     }
 });
