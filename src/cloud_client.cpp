@@ -224,11 +224,19 @@ void CloudClient::pushState() {
 }
 
 void CloudClient::pollCommands() {
-    int httpCode = sendRequest("/commands/poll", "GET");
+    // Use pollHttp_ (task-specific client) to avoid race with main loop
+    String url = apiEndpoint_ + "/commands/poll";
+    
+    pollHttp_.begin(url);
+    pollHttp_.setTimeout(HTTP_TIMEOUT_MS);
+    pollHttp_.addHeader("Content-Type", "application/json");
+    pollHttp_.addHeader("X-API-Key", apiKey_);
+    
+    int httpCode = pollHttp_.GET();
     
     if (httpCode == HTTP_CODE_OK) {
-        String payload = http_.getString();
-        http_.end();
+        String payload = pollHttp_.getString();
+        pollHttp_.end();  // Close connection immediately
         
         JsonDocument doc;
         DeserializationError error = deserializeJson(doc, payload);
@@ -239,26 +247,32 @@ void CloudClient::pollCommands() {
             return;
         }
         
-        // Check if there's a command
+        // Check if there's a command with mutex protection
         if (!doc["command"].isNull() && !doc["command"]["action"].isNull()) {
             String commandPayload;
             serializeJson(doc["command"], commandPayload);
             
-            pendingCommand_ = commandPayload;
-            hasPendingCommand_ = true;
-            
-            Serial.print("[CLOUD] Command received: ");
-            Serial.println(commandPayload);
+            // Thread-safe access to shared variables
+            if (xSemaphoreTake(commandMutex_, pdMS_TO_TICKS(100)) == pdTRUE) {
+                pendingCommand_ = commandPayload;
+                hasPendingCommand_ = true;
+                xSemaphoreGive(commandMutex_);
+                
+                Serial.print("[CLOUD] Command received: ");
+                Serial.println(commandPayload);
+            } else {
+                Serial.println("[CLOUD] Failed to acquire mutex for command");
+            }
         }
     } else if (httpCode > 0) {
         Serial.print("[CLOUD] Failed to poll commands. HTTP code: ");
         Serial.println(httpCode);
-        http_.end();
+        pollHttp_.end();
     } else {
         // Connection error
         Serial.print("[CLOUD] Connection error: ");
-        Serial.println(http_.errorToString(httpCode));
-        http_.end();
+        Serial.println(pollHttp_.errorToString(httpCode));
+        pollHttp_.end();
     }
 }
 
@@ -292,10 +306,11 @@ void CloudClient::startPollTask() {
     pollTaskRunning_ = true;
     
     // Create task on Core 0 (Core 1 is used by Arduino loop)
+    // Stack increased to 16KB for HTTPClient + JSON parsing
     xTaskCreatePinnedToCore(
         pollTaskFunction,   // Task function
         "CloudPoll",        // Task name
-        8192,              // Stack size (bytes)
+        16384,             // Stack size (bytes) - increased for HTTP + JSON
         this,              // Parameter passed to task
         1,                 // Priority
         &pollTaskHandle_,  // Task handle
@@ -325,7 +340,16 @@ void CloudClient::stopPollTask() {
 void CloudClient::pollTaskFunction(void* parameter) {
     CloudClient* client = static_cast<CloudClient*>(parameter);
     
+    // Null pointer check
+    if (client == nullptr) {
+        Serial.println("[CLOUD] ERROR: Null client pointer in poll task");
+        vTaskDelete(NULL);
+        return;
+    }
+    
     Serial.println("[CLOUD] Poll task running - long polling active");
+    Serial.print("[CLOUD] Task stack size: ");
+    Serial.println(uxTaskGetStackHighWaterMark(NULL));
     
     while (client->pollTaskRunning_) {
         // Check WiFi connection
@@ -337,8 +361,8 @@ void CloudClient::pollTaskFunction(void* parameter) {
         // Poll for commands (blocks for up to 35 seconds)
         client->pollCommands();
         
-        // Small delay before next poll
-        vTaskDelay(pdMS_TO_TICKS(100));
+        // Ensure connections are fully released
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
     
     Serial.println("[CLOUD] Poll task exiting");
