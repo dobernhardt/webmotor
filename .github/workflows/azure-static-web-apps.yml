@@ -30,21 +30,38 @@ jobs:
       - name: Determine Version
         id: gitversion
         uses: gittools/actions/gitversion/execute@v0.10.2
-        with:
-          useConfigFile: true
-          configFilePath: GitVersion.yml
+        continue-on-error: true
       
       - name: Generate Version Info
         run: |
+          # Use GitVersion outputs if available, otherwise use defaults
+          VERSION="${{ steps.gitversion.outputs.semVer }}"
+          FULL_VERSION="${{ steps.gitversion.outputs.fullSemVer }}"
+          BRANCH="${{ steps.gitversion.outputs.branchName }}"
+          SHA="${{ steps.gitversion.outputs.sha }}"
+          SHORT_SHA="${{ steps.gitversion.outputs.shortSha }}"
+          MAJOR_MINOR_PATCH="${{ steps.gitversion.outputs.majorMinorPatch }}"
+          
+          # Fallback to git info if GitVersion failed
+          if [ -z "$VERSION" ]; then
+            VERSION="0.1.0-dev"
+            FULL_VERSION="0.1.0-dev"
+            BRANCH="${{ github.ref_name }}"
+            SHA="${{ github.sha }}"
+            SHORT_SHA="${GITHUB_SHA:0:7}"
+            MAJOR_MINOR_PATCH="0.1.0"
+          fi
+          
           cat > api/version.json << EOF
           {
-            "version": "${{ steps.gitversion.outputs.semVer }}",
-            "fullSemVer": "${{ steps.gitversion.outputs.fullSemVer }}",
-            "informationalVersion": "${{ steps.gitversion.outputs.informationalVersion }}",
-            "branchName": "${{ steps.gitversion.outputs.branchName }}",
-            "sha": "${{ steps.gitversion.outputs.sha }}",
-            "shortSha": "${{ steps.gitversion.outputs.shortSha }}",
-            "majorMinorPatch": "${{ steps.gitversion.outputs.majorMinorPatch }}",
+            "version": "$VERSION",
+            "semVer": "$VERSION",
+            "fullSemVer": "$FULL_VERSION",
+            "informationalVersion": "$FULL_VERSION",
+            "branchName": "$BRANCH",
+            "sha": "$SHA",
+            "shortSha": "$SHORT_SHA",
+            "majorMinorPatch": "$MAJOR_MINOR_PATCH",
             "build_timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
             "github_run_id": "${{ github.run_id }}",
             "github_run_number": "${{ github.run_number }}"
