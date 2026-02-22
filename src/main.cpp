@@ -2,7 +2,7 @@
 #include <FastLED.h>
 #include "wifi_manager.h"
 #include "web_server.h"
-#include "motor_controller.h"
+#include "motor_controller_tmc2209.h"
 
 // ATOM S3 Lite RGB LED configuration
 #define LED_PIN 35
@@ -64,7 +64,7 @@ bool ledPhase = false;
 
 WifiManager wifiManager;
 WebServerController webServer;
-MotorController motorController;
+MotorControllerTMC2209 motorController;
 
 void updateLED() {
     unsigned long currentTime = millis();

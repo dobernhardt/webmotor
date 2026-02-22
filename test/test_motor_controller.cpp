@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include <unity.h>
-#include "motor_controller.h"
+#include "motor_controller_tmc2209.h"
 
-MotorController motorController;
+MotorControllerTMC2209 motorController;
 
 void setUp() {
     motorController.reset(); // Reset motor controller state before each test

@@ -1,4 +1,4 @@
-#include "motor_controller.h"
+#include "motor_controller_tmc2209.h"
 #include "config.h"
 #include "state.h"
 #include <Arduino.h>
@@ -19,14 +19,17 @@ namespace {
     constexpr uint32_t kPulseWidthUs = 5;
 }  // namespace
 
-MotorController::MotorController()
+MotorControllerTMC2209::MotorControllerTMC2209()
     : currentState{ kDefaultMicrosteps, kDefaultFrequency, kDefaultDirection, kDefaultMode },
       stepTaskHandle(nullptr),
-      taskRunning(false) {
+      taskRunning(false),
+      degreeRotationActive(false),
+      targetSteps(0),
+      currentSteps(0) {
 }
 
-void MotorController::begin() {
-    Serial.println("[MOTOR] Initializing motor controller");
+void MotorControllerTMC2209::begin() {
+    Serial.println("[MOTOR] Initializing TMC2209 motor controller");
     
     // Configure all pins
     pinMode(DIR_PIN, OUTPUT);
@@ -39,11 +42,72 @@ void MotorController::begin() {
     setPinStates();
     digitalWrite(STEP_PIN, LOW);
     
-    Serial.println("[MOTOR] Motor controller initialized");
+    Serial.println("[MOTOR] TMC2209 motor controller initialized");
 }
 
+// AbstractMotorController interface implementation
 
-void MotorController::setMicrosteps(uint16_t microsteps) {
+void MotorControllerTMC2209::start() {
+    setMode(MotorMode::RUNNING);
+}
+
+void MotorControllerTMC2209::stop() {
+    setMode(MotorMode::STOPPED);
+}
+
+void MotorControllerTMC2209::release() {
+    setMode(MotorMode::RELEASED);
+}
+
+void MotorControllerTMC2209::setMicrostepMode(uint16_t microsteps) {
+    setMicrosteps(microsteps);
+}
+
+uint16_t MotorControllerTMC2209::getMicrostepMode() const {
+    return getMicrosteps();
+}
+
+bool MotorControllerTMC2209::runForDegrees(float degrees, uint16_t stepsPerRevolution) {
+    if (currentState.mode == MotorMode::RUNNING && degreeRotationActive) {
+        Serial.println("[MOTOR] WARNING: Already running for degrees, ignoring request");
+        return false;
+    }
+    
+    if (stepsPerRevolution == 0) {
+        Serial.println("[MOTOR] ERROR: Invalid stepsPerRevolution (must be > 0)");
+        return false;
+    }
+    
+    // Calculate total steps needed including microstepping
+    float totalStepsFloat = (degrees / 360.0f) * stepsPerRevolution * currentState.microsteps;
+    uint32_t totalSteps = abs((int32_t)totalStepsFloat);
+    
+    if (totalSteps == 0) {
+        Serial.println("[MOTOR] WARNING: Degrees too small, no movement");
+        return false;
+    }
+    
+    // Set direction based on sign of degrees
+    bool direction = (degrees >= 0.0f);
+    setDirection(direction);
+    
+    // Initialize degree rotation state
+    degreeRotationActive = true;
+    targetSteps = totalSteps;
+    currentSteps = 0;
+    
+    Serial.printf("[MOTOR] Running for %.2f degrees (%u steps, %s)\n", 
+                 degrees, totalSteps, direction ? "CW" : "CCW");
+    
+    // Start the motor
+    start();
+    
+    return true;
+}
+
+// Legacy compatibility methods
+
+void MotorControllerTMC2209::setMicrosteps(uint16_t microsteps) {
     uint16_t validatedMicrosteps = validateMicrosteps(microsteps);
     
     if (currentState.microsteps != validatedMicrosteps) {
@@ -53,11 +117,11 @@ void MotorController::setMicrosteps(uint16_t microsteps) {
     }
 }
 
-uint16_t MotorController::getMicrosteps() const {
+uint16_t MotorControllerTMC2209::getMicrosteps() const {
     return currentState.microsteps;
 }
 
-void MotorController::setFrequency(uint32_t frequency) {
+void MotorControllerTMC2209::setFrequency(uint32_t frequency) {
     uint32_t validatedFrequency = validateFrequency(frequency);
     
     if (currentState.frequency != validatedFrequency) {
@@ -66,20 +130,20 @@ void MotorController::setFrequency(uint32_t frequency) {
     }
 }
 
-uint32_t MotorController::getFrequency() const {
+uint32_t MotorControllerTMC2209::getFrequency() const {
     return currentState.frequency;
 }
 
-void MotorController::setDirection(bool clockwise) {
+void MotorControllerTMC2209::setDirection(bool clockwise) {
     currentState.direction = clockwise;
     digitalWrite(DIR_PIN, currentState.direction ? HIGH : LOW);
 }
 
-bool MotorController::getDirection() const {
+bool MotorControllerTMC2209::getDirection() const {
     return currentState.direction;
 }
 
-void MotorController::setMode(MotorMode mode) {
+void MotorControllerTMC2209::setMode(MotorMode mode) {
     if (currentState.mode != mode) {
         Serial.printf("[MOTOR] Mode: %d -> %d\n", (int)currentState.mode, (int)mode);
         currentState.mode = mode;
@@ -88,11 +152,13 @@ void MotorController::setMode(MotorMode mode) {
             stopStepTask();
             digitalWrite(EN_PIN, HIGH);
             digitalWrite(STEP_PIN, LOW);
+            degreeRotationActive = false;
             Serial.println("[MOTOR] Motor released");
         } else if (mode == MotorMode::STOPPED) {
             stopStepTask();
             digitalWrite(EN_PIN, LOW);
             digitalWrite(STEP_PIN, LOW);
+            degreeRotationActive = false;
             Serial.println("[MOTOR] Motor stopped with holding torque");
         } else if (mode == MotorMode::RUNNING) {
             digitalWrite(EN_PIN, LOW);
@@ -102,22 +168,35 @@ void MotorController::setMode(MotorMode mode) {
     }
 }
 
-MotorMode MotorController::getMode() const {
+MotorMode MotorControllerTMC2209::getMode() const {
     return currentState.mode;
 }
 
-MotorState MotorController::getMotorState() const {
+MotorState MotorControllerTMC2209::getMotorState() const {
     return currentState;
 }
 
-void MotorController::stepTask(void* parameter) {
-    MotorController* controller = static_cast<MotorController*>(parameter);
+void MotorControllerTMC2209::stepTask(void* parameter) {
+    MotorControllerTMC2209* controller = static_cast<MotorControllerTMC2209*>(parameter);
     
     Serial.println("[MOTOR] Step task started");
     
     while (controller->taskRunning) {
         if (controller->currentState.mode == MotorMode::RUNNING && 
             controller->currentState.frequency > 0) {
+            
+            // Check if we're doing a degree rotation and have reached target
+            if (controller->degreeRotationActive) {
+                if (controller->currentSteps >= controller->targetSteps) {
+                    Serial.println("[MOTOR] Degree rotation complete, stopping");
+                    controller->degreeRotationActive = false;
+                    controller->currentSteps = 0;
+                    controller->targetSteps = 0;
+                    // Stop the motor but maintain holding torque
+                    controller->setMode(MotorMode::STOPPED);
+                    continue;
+                }
+            }
             
             // Calculate delay between steps in microseconds
             uint32_t periodUs = 1000000UL / controller->currentState.frequency;
@@ -127,6 +206,11 @@ void MotorController::stepTask(void* parameter) {
             digitalWrite(STEP_PIN, HIGH);
             delayMicroseconds(kPulseWidthUs);
             digitalWrite(STEP_PIN, LOW);
+            
+            // Increment step counter for degree rotation
+            if (controller->degreeRotationActive) {
+                controller->currentSteps++;
+            }
             
             // Wait for rest of half period
             if (halfPeriodUs > kPulseWidthUs) {
@@ -144,7 +228,7 @@ void MotorController::stepTask(void* parameter) {
     vTaskDelete(nullptr);
 }
 
-void MotorController::startStepTask() {
+void MotorControllerTMC2209::startStepTask() {
     if (stepTaskHandle == nullptr) {
         taskRunning = true;
         xTaskCreatePinnedToCore(
@@ -160,7 +244,7 @@ void MotorController::startStepTask() {
     }
 }
 
-void MotorController::stopStepTask() {
+void MotorControllerTMC2209::stopStepTask() {
     if (stepTaskHandle != nullptr) {
         taskRunning = false;
         // Wait for task to finish
@@ -171,7 +255,7 @@ void MotorController::stopStepTask() {
     }
 }
 
-void MotorController::setMicrostepPins(uint16_t microsteps) {
+void MotorControllerTMC2209::setMicrostepPins(uint16_t microsteps) {
     bool ms1State = LOW;
     bool ms2State = LOW;
     
@@ -210,7 +294,7 @@ void MotorController::setMicrostepPins(uint16_t microsteps) {
                  microsteps);
 }
 
-void MotorController::setPinStates() {
+void MotorControllerTMC2209::setPinStates() {
     // Set direction pin
     digitalWrite(DIR_PIN, currentState.direction ? HIGH : LOW);
     
@@ -221,7 +305,7 @@ void MotorController::setPinStates() {
     setMicrostepPins(currentState.microsteps);
 }
 
-uint16_t MotorController::validateMicrosteps(uint16_t requested) {
+uint16_t MotorControllerTMC2209::validateMicrosteps(uint16_t requested) {
     // Check if requested microsteps is in allowed list
     for (size_t i = 0; i < kNumAllowedMicrosteps; ++i) {
         if (kAllowedMicrosteps[i] == requested) {
@@ -234,7 +318,7 @@ uint16_t MotorController::validateMicrosteps(uint16_t requested) {
     return kDefaultMicrosteps;
 }
 
-uint32_t MotorController::validateFrequency(uint32_t requested) {
+uint32_t MotorControllerTMC2209::validateFrequency(uint32_t requested) {
     if (requested > kMaxFrequency) {
         Serial.printf("[MOTOR] Frequency %u too high, clamping to %u\n", requested, kMaxFrequency);
         return kMaxFrequency;
@@ -248,6 +332,6 @@ uint32_t MotorController::validateFrequency(uint32_t requested) {
     return requested;
 }
 
-bool MotorController::isRunning() const {
+bool MotorControllerTMC2209::isRunning() const {
     return currentState.mode == MotorMode::RUNNING && currentState.frequency > 0;
 }
