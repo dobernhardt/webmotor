@@ -1,0 +1,11 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "STORAGE_CONNECTION_STRING": "<your-storage-connection-string>",
+    "API_KEY": "<your-api-key>",
+    "QUEUE_NAME": "webmotor-commands",
+    "TABLE_NAME": "webmotorstate"
+  }
+}

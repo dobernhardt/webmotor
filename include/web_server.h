@@ -7,17 +7,19 @@
 
 class MotorControllerTMC2209;
 class WifiManager;
+class CloudClient;
 
 class WebServerController {
 public:
     WebServerController();
-    void begin(MotorControllerTMC2209& motorController, WifiManager& wifiManager);
+    void begin(MotorControllerTMC2209& motorController, WifiManager& wifiManager, CloudClient& cloudClient);
     void handle();
 
 private:
     ::WebServer server;
     MotorControllerTMC2209* motor;
     WifiManager* wifi;
+    CloudClient* cloud;
     MotorState cachedState;
 
     void registerRoutes();
@@ -25,6 +27,9 @@ private:
     void handleMotorControl();
     void handleWiFiConfig();
     void handleWiFiStatus();
+    void handleCloudConfig();
+    void handleCloudStatus();
+    void handleCloudTest();
     void sendJson(int statusCode, const String& payload);
     void serveFile(const String& path, const String& contentType);
     void updateStatusLED();

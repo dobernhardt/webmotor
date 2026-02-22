@@ -3,19 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebMotor Control</title>
+    <title>WebMotor Cloud Control</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
-        <h1>WebMotor Control</h1>
+        <h1>☁️ WebMotor Cloud Control</h1>
         
+        <!-- Cloud Configuration Card -->
         <div class="control-card">
-            <h2>Motor Control</h2>
+            <h2>Cloud Configuration</h2>
             
+            <div class="control-group">
+                <label for="api-endpoint">Azure Function Endpoint:</label>
+                <input type="text" id="api-endpoint" placeholder="https://your-function-app.azurewebsites.net/api">
+            </div>
+
+            <div class="control-group">
+                <label for="api-key">API Key:</label>
+                <input type="password" id="api-key" placeholder="Enter API Key">
+            </div>
+
+            <button id="save-config" class="btn btn-primary">Save Configuration</button>
+            <button id="test-connection" class="btn btn-secondary">Test Connection</button>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="control-card">
             <div class="status-bar">
                 <div class="status-item">
-                    <span class="status-label">Connection:</span>
+                    <span class="status-label">Cloud:</span>
                     <span id="connection-status" class="status-indicator disconnected">Disconnected</span>
                 </div>
                 <div class="status-item">
@@ -23,14 +40,19 @@
                     <span id="motor-status" class="motor-status unknown">Unknown</span>
                 </div>
                 <div class="status-item">
-                    <span class="status-label">WiFi:</span>
-                    <span id="wifi-status" class="status-indicator unknown">Unknown</span>
+                    <span class="status-label">Position:</span>
+                    <span id="position-value" class="value-display">-</span>
                 </div>
                 <div class="status-item">
-                    <span class="status-label">Network:</span>
-                    <span id="network-info" class="network-info">-</span>
+                    <span class="status-label">Last Update:</span>
+                    <span id="last-update" class="value-display">Never</span>
                 </div>
             </div>
+        </div>
+        
+        <!-- Motor Control Card -->
+        <div class="control-card">
+            <h2>Motor Control</h2>
             
             <div class="control-group">
                 <label for="microsteps">Microstepping:</label>
@@ -72,53 +94,10 @@
             </div>
         </div>
 
-        <div class="control-card">
-            <h2>WiFi Configuration</h2>
-            
-            <div class="control-group">
-                <label for="ssid">SSID:</label>
-                <input type="text" id="ssid" placeholder="Enter SSID">
-            </div>
-
-            <div class="control-group">
-                <label for="password">Password:</label>
-                <input type="password" id="password" placeholder="Enter Password">
-            </div>
-
-            <button id="save-wifi" class="btn btn-primary">Save WiFi Config</button>
-        </div>
-
-        <div class="control-card">
-            <h2>☁️ Cloud Configuration</h2>
-            
-            <div class="control-group">
-                <label for="cloud-endpoint">Azure Function Endpoint:</label>
-                <input type="text" id="cloud-endpoint" placeholder="https://your-function-app.azurewebsites.net/api">
-            </div>
-
-            <div class="control-group">
-                <label for="cloud-api-key">API Key:</label>
-                <input type="password" id="cloud-api-key" placeholder="Enter API Key">
-            </div>
-
-            <div class="control-group">
-                <label>Enable Cloud Sync:</label>
-                <div class="toggle-container">
-                    <input type="checkbox" id="cloud-enabled" class="toggle-input">
-                    <label for="cloud-enabled" class="toggle-switch"></label>
-                    <span class="toggle-text" id="cloud-enabled-text">Disabled</span>
-                </div>
-            </div>
-
-            <div class="control-group">
-                <button id="save-cloud" class="btn btn-primary" style="margin-right: 10px;">Save Cloud Config</button>
-                <button id="test-cloud" class="btn btn-secondary">Test Connection</button>
-            </div>
-        </div>
-
+        <!-- Status Log -->
         <div class="status">
             <h2>Status</h2>
-            <pre id="status-output">Ready...</pre>
+            <pre id="status-output">Ready... Configure cloud settings above to begin.</pre>
         </div>
     </div>
 

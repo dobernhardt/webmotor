@@ -1,8 +1,10 @@
 #include <Arduino.h>
 #include <FastLED.h>
+#include <ArduinoJson.h>
 #include "wifi_manager.h"
 #include "web_server.h"
 #include "motor_controller_tmc2209.h"
+#include "cloud_client.h"
 
 // ATOM S3 Lite RGB LED configuration
 #define LED_PIN 35
@@ -65,6 +67,7 @@ bool ledPhase = false;
 WifiManager wifiManager;
 WebServerController webServer;
 MotorControllerTMC2209 motorController;
+CloudClient cloudClient;
 
 void updateLED() {
     unsigned long currentTime = millis();
@@ -153,10 +156,15 @@ void setup() {
     motorController.begin();
     Serial.println("[INIT] Motor Controller ready");
     
+    // Initialize Cloud Client
+    Serial.println("[INIT] Starting Cloud Client...");
+    cloudClient.begin();
+    Serial.println("[INIT] Cloud Client ready");
+    
     // Initialize Web Server
     Serial.println("[INIT] Starting Web Server...");
     blinkRGB(CRGB::Yellow, 4, 300);
-    webServer.begin(motorController, wifiManager);
+    webServer.begin(motorController, wifiManager, cloudClient);
     Serial.println("[INIT] Web Server ready");
     
     // Success indication
@@ -177,6 +185,61 @@ void loop() {
     // Handle system tasks
     wifiManager.handle();
     webServer.handle();
+    cloudClient.handle();
+    
+    // Process cloud commands
+    if (cloudClient.hasCommand()) {
+        String commandJson = cloudClient.getCommand();
+        Serial.print("[CLOUD] Processing command: ");
+        Serial.println(commandJson);
+        
+        // Parse and execute command
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, commandJson);
+        
+        if (!error && doc["action"] == "control" && !doc["parameters"].isNull()) {
+            JsonObject params = doc["parameters"];
+            
+            if (!params["microsteps"].isNull()) {
+                uint16_t microsteps = params["microsteps"];
+                motorController.setMicrosteps(microsteps);
+                Serial.print("[CLOUD] Set microsteps: ");
+                Serial.println(microsteps);
+            }
+            if (!params["frequency"].isNull()) {
+                uint32_t frequency = params["frequency"];
+                motorController.setFrequency(frequency);
+                Serial.print("[CLOUD] Set frequency: ");
+                Serial.println(frequency);
+            }
+            if (!params["direction"].isNull()) {
+                bool direction = params["direction"];
+                motorController.setDirection(direction);
+                Serial.print("[CLOUD] Set direction: ");
+                Serial.println(direction ? "CW" : "CCW");
+            }
+            if (!params["mode"].isNull()) {
+                String modeStr = params["mode"] | "";
+                MotorMode mode = MotorMode::STOPPED;
+                
+                if (modeStr.equalsIgnoreCase("RUNNING")) {
+                    mode = MotorMode::RUNNING;
+                } else if (modeStr.equalsIgnoreCase("STOPPED")) {
+                    mode = MotorMode::STOPPED;
+                } else if (modeStr.equalsIgnoreCase("RELEASED")) {
+                    mode = MotorMode::RELEASED;
+                }
+                
+                motorController.setMode(mode);
+                Serial.print("[CLOUD] Set mode: ");
+                Serial.println(modeStr);
+            }
+        }
+    }
+    
+    // Update cloud client with current motor state
+    MotorState currentMotorState = motorController.getMotorState();
+    cloudClient.setMotorState(currentMotorState);
     
     loopCount++;
     unsigned long currentTime = millis();

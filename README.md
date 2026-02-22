@@ -10,6 +10,39 @@ WebMotor is an educational Arduino framework-based firmware designed for the M5S
 - mDNS discoverability for easy access.
 - Persistent storage of Wi-Fi credentials.
 - **Visual status indication** via the ATOM S3 Lite's built-in RGB LED.
+- **☁️ Cloud Integration** for remote motor control from anywhere with internet access.
+
+## Cloud Integration
+
+WebMotor now supports remote control via Azure cloud services! Control your motor from anywhere with internet access using:
+
+- **Azure Function Backend**: REST API with long-polling for efficient command delivery
+- **Cloud Frontend**: Web-based interface for remote control
+- **Real-time State Sync**: Motor state updates every 2 seconds
+- **API Key Authentication**: Secure communication
+- **Dual Control**: Local and cloud control work simultaneously
+- **Persistent Configuration**: Cloud settings stored in NVS
+
+### Quick Start
+
+1. **Set up Azure resources** (Storage Account, Function App, Static Web App)
+2. **Deploy the backend** from `azure-function/` directory
+3. **Deploy the frontend** from `cloud-frontend/` directory
+4. **Configure controller** via local web UI
+
+📖 **See [CLOUD_SETUP.md](CLOUD_SETUP.md) for complete setup instructions**
+
+### Architecture
+
+```
+Cloud Frontend → Azure Function → Queue Storage
+                                      ↓
+Controller ← Long Poll (30s) ─────────┘
+
+Controller → Azure Function → Table Storage
+                                   ↓
+Cloud Frontend ← Polling (2s) ─────┘
+```
 
 ## LED Status Indicators
 
@@ -55,23 +88,37 @@ When commands are received via the web interface or REST API, the LED briefly fl
 ```
 WebMotor
 ├── data
-│   ├── app.js          # JavaScript for web interface
-│   ├── index.html      # Main HTML page for the web interface
-│   └── styles.css      # CSS styles for the web interface
+│   ├── app.js          # JavaScript for local web interface
+│   ├── index.html      # Main HTML page for local web interface
+│   └── styles.css      # CSS styles for local web interface
 ├── include
+│   ├── abstract_motor_controller.h # Abstract motor controller interface
+│   ├── cloud_client.h   # Cloud client for Azure integration
 │   ├── config.h        # Configuration constants
-│   ├── motor_controller.h # Motor control functions
+│   ├── motor_controller_tmc2209.h # TMC2209 motor control
 │   ├── state.h         # Motor state definitions
-│   ├── web_server.h     # HTTP server and API handling
-│   └── wifi_manager.h   # Wi-Fi management functions
+│   ├── web_server.h    # HTTP server and API handling
+│   └── wifi_manager.h  # Wi-Fi management functions
 ├── src
 │   ├── main.cpp        # Entry point of the application
-│   ├── motor_controller.cpp # Implementation of motor control
-│   ├── web_server.cpp   # Implementation of web server
-│   └── wifi_manager.cpp  # Implementation of Wi-Fi manager
+│   ├── cloud_client.cpp # Implementation of cloud client
+│   ├── motor_controller_tmc2209.cpp # Implementation of motor control
+│   ├── web_server.cpp  # Implementation of web server
+│   └── wifi_manager.cpp # Implementation of Wi-Fi manager
+├── azure-function      # Azure Function backend for cloud control
+│   ├── function_app.py # Main Azure Function application
+│   ├── requirements.txt # Python dependencies
+│   ├── host.json       # Azure Functions configuration
+│   └── README.md       # Backend documentation
+├── cloud-frontend      # Cloud-based web interface
+│   ├── index.html      # Cloud frontend HTML
+│   ├── app.js          # Cloud frontend JavaScript
+│   ├── styles.css      # Cloud frontend CSS
+│   └── README.md       # Frontend documentation
 ├── test
 │   └── test_motor_controller.cpp # Unit tests for motor controller
 ├── platformio.ini      # PlatformIO configuration file
+├── CLOUD_SETUP.md      # Complete cloud setup guide
 └── README.md           # Project documentation
 ```
 

@@ -115,6 +115,54 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
+    // Cloud configuration toggle
+    const cloudEnabledToggle = document.getElementById('cloud-enabled');
+    const cloudEnabledText = document.getElementById('cloud-enabled-text');
+    
+    cloudEnabledToggle.addEventListener('change', function() {
+        cloudEnabledText.textContent = this.checked ? 'Enabled' : 'Disabled';
+    });
+    
+    // Cloud configuration
+    document.getElementById('save-cloud').addEventListener('click', function() {
+        const endpoint = document.getElementById('cloud-endpoint').value;
+        const apiKey = document.getElementById('cloud-api-key').value;
+        const enabled = cloudEnabledToggle.checked;
+        
+        if (endpoint && apiKey) {
+            const cloudConfig = {
+                apiEndpoint: endpoint,
+                apiKey: apiKey,
+                enabled: enabled
+            };
+            
+            sendRequest('/api/cloud/config', 'POST', cloudConfig)
+                .then(() => {
+                    updateStatus(`Cloud config saved. Sync ${enabled ? 'enabled' : 'disabled'}`);
+                    // Clear API key field for security
+                    document.getElementById('cloud-api-key').value = '';
+                })
+                .catch(error => updateStatus(`Error saving cloud config: ${error.message}`));
+        } else {
+            updateStatus('Error: Please enter endpoint and API key');
+        }
+    });
+    
+    // Test cloud connection
+    document.getElementById('test-cloud').addEventListener('click', function() {
+        updateStatus('Testing cloud connection...');
+        
+        sendRequest('/api/cloud/test', 'GET')
+            .then(response => {
+                if (response.success) {
+                    updateStatus(`✓ ${response.message}`);
+                } else {
+                    updateStatus(`✗ ${response.message}`);
+                }
+            })
+            .catch(error => updateStatus(`Error testing cloud: ${error.message}`));
+    });
+    
     // Function to send motor control commands using the /api/motor/control endpoint
     function sendMotorControl(parameter, value) {
         const data = {};
@@ -250,6 +298,9 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Load WiFi status
         loadWiFiStatus();
+        
+        // Load cloud status
+        loadCloudStatus();
     }
     
     // Load WiFi status from device
@@ -261,6 +312,24 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(error => {
                 // WiFi status is less critical, just log without updating connection state
                 console.log('WiFi status request failed:', error);
+            });
+    }
+    
+    // Load cloud status from device
+    function loadCloudStatus() {
+        sendRequest('/api/cloud/status')
+            .then(response => {
+                // Update UI with cloud config
+                if (response.apiEndpoint) {
+                    document.getElementById('cloud-endpoint').value = response.apiEndpoint;
+                }
+                if (response.enabled !== undefined) {
+                    cloudEnabledToggle.checked = response.enabled;
+                    cloudEnabledText.textContent = response.enabled ? 'Enabled' : 'Disabled';
+                }
+            })
+            .catch(error => {
+                console.log('Cloud status request failed:', error);
             });
     }
     

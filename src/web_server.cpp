@@ -5,6 +5,7 @@
 #include <FastLED.h>
 #include "motor_controller_tmc2209.h"
 #include "wifi_manager.h"
+#include "cloud_client.h"
 
 // Reference to the LED array from main.cpp
 extern CRGB leds[];
@@ -17,9 +18,10 @@ WebServerController::WebServerController()
     : server(kHttpPort),
       motor(nullptr),
       wifi(nullptr),
+      cloud(nullptr),
       cachedState{0, 0, true, MotorMode::STOPPED} {}
 
-void WebServerController::begin(MotorControllerTMC2209& motorController, WifiManager& wifiManager) {
+void WebServerController::begin(MotorControllerTMC2209& motorController, WifiManager& wifiManager, CloudClient& cloudClient) {
     Serial.println("[WEB] Initializing WebServer...");
     
     // Initialize SPIFFS
@@ -31,6 +33,7 @@ void WebServerController::begin(MotorControllerTMC2209& motorController, WifiMan
     
     motor = &motorController;
     wifi = &wifiManager;
+    cloud = &cloudClient;
     cachedState = motor->getMotorState();
     Serial.println("[WEB] Controllers linked");
 
@@ -72,6 +75,22 @@ void WebServerController::registerRoutes() {
     server.on("/api/wifi/status", HTTP_GET, [this]() { 
         Serial.println("[API] GET /api/wifi/status");
         this->handleWiFiStatus(); 
+    });
+    
+    // Cloud configuration routes
+    server.on("/api/cloud/config", HTTP_POST, [this]() { 
+        Serial.println("[API] POST /api/cloud/config");
+        this->handleCloudConfig(); 
+    });
+    
+    server.on("/api/cloud/status", HTTP_GET, [this]() { 
+        Serial.println("[API] GET /api/cloud/status");
+        this->handleCloudStatus(); 
+    });
+    
+    server.on("/api/cloud/test", HTTP_GET, [this]() { 
+        Serial.println("[API] GET /api/cloud/test");
+        this->handleCloudTest(); 
     });
     
     // Static file routes
@@ -354,4 +373,103 @@ void WebServerController::updateStatusLED() {
     delay(50);
     
     // The main loop will update to the appropriate state based on current system status
+}
+
+void WebServerController::handleCloudConfig() {
+    Serial.println("[API] Processing cloud config request");
+    
+    if (!server.hasArg("plain")) {
+        Serial.println("[API] ERROR: No JSON payload for cloud config");
+        sendJson(400, "{\"error\":\"No data received\"}");
+        return;
+    }
+
+    if (cloud == nullptr) {
+        Serial.println("[API] ERROR: Cloud client unavailable");
+        sendJson(500, "{\"error\":\"Cloud client unavailable\"}");
+        return;
+    }
+
+    String body = server.arg("plain");
+    Serial.print("[API] Cloud config payload: ");
+    Serial.println(body);
+
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, body);
+    if (error) {
+        Serial.print("[API] ERROR: Cloud JSON parse failed - ");
+        Serial.println(error.c_str());
+        sendJson(400, "{\"error\":\"Invalid JSON\"}");
+        return;
+    }
+
+    String apiEndpoint = doc["apiEndpoint"] | "";
+    String apiKey = doc["apiKey"] | "";
+    bool enabled = doc["enabled"] | false;
+    
+    Serial.print("[CLOUD] Saving configuration - Endpoint: ");
+    Serial.println(apiEndpoint);
+    Serial.print("[CLOUD] Enabled: ");
+    Serial.println(enabled ? "true" : "false");
+    // Note: API key not logged for security
+    
+    if (cloud->setConfig(apiEndpoint, apiKey, enabled)) {
+        Serial.println("[CLOUD] Configuration saved successfully");
+        sendJson(200, "{\"status\":\"configuration saved\"}");
+    } else {
+        Serial.println("[CLOUD] ERROR: Failed to save configuration");
+        sendJson(500, "{\"error\":\"Failed to save configuration\"}");
+    }
+}
+
+void WebServerController::handleCloudStatus() {
+    Serial.println("[API] Processing cloud status request");
+    
+    if (cloud == nullptr) {
+        Serial.println("[API] ERROR: Cloud client unavailable");
+        sendJson(500, "{\"error\":\"Cloud client unavailable\"}");
+        return;
+    }
+
+    String apiEndpoint, apiKey;
+    bool enabled;
+    cloud->getConfig(apiEndpoint, apiKey, enabled);
+
+    JsonDocument doc;
+    doc["apiEndpoint"] = apiEndpoint;
+    doc["apiKey"] = apiKey.isEmpty() ? "" : "********"; // Mask API key
+    doc["enabled"] = enabled;
+    doc["configured"] = !apiEndpoint.isEmpty() && !apiKey.isEmpty();
+
+    String jsonResponse;
+    serializeJson(doc, jsonResponse);
+    
+    Serial.print("[API] Sending cloud status: ");
+    Serial.println(jsonResponse);
+    
+    sendJson(200, jsonResponse);
+}
+
+void WebServerController::handleCloudTest() {
+    Serial.println("[API] Processing cloud test request");
+    
+    if (cloud == nullptr) {
+        Serial.println("[API] ERROR: Cloud client unavailable");
+        sendJson(500, "{\"error\":\"Cloud client unavailable\"}");
+        return;
+    }
+
+    bool success = cloud->testConnection();
+
+    JsonDocument doc;
+    doc["success"] = success;
+    doc["message"] = success ? "Connection successful" : "Connection failed";
+
+    String jsonResponse;
+    serializeJson(doc, jsonResponse);
+    
+    Serial.print("[API] Cloud test result: ");
+    Serial.println(jsonResponse);
+    
+    sendJson(200, jsonResponse);
 }
