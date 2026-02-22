@@ -158,6 +158,17 @@ def poll_commands(req: func.HttpRequest) -> func.HttpResponse:
         return create_error_response("Unauthorized", 401)
     
     try:
+        # Update last_seen timestamp for device status tracking
+        try:
+            device_status = {
+                "PartitionKey": "device",
+                "RowKey": "status",
+                "last_seen": datetime.now(timezone.utc).isoformat()
+            }
+            table_client.upsert_entity(device_status, mode=UpdateMode.REPLACE)
+        except Exception as e:
+            logging.warning(f"Could not update device status: {str(e)}")
+        
         start_time = time.time()
         
         # Long polling loop
@@ -272,6 +283,64 @@ def get_state(req: func.HttpRequest) -> func.HttpResponse:
             return create_success_response({"state": None})
         
         logging.error(f"Error getting state: {str(e)}")
+        return create_error_response(f"Internal error: {str(e)}", 500)
+
+
+@app.route(route="device/status", methods=["GET"])
+def get_device_status(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    GET /api/device/status
+    Get device online status and last seen timestamp
+    """
+    logging.info("get_device_status: Request received")
+    
+    # Initialize storage if needed
+    if not table_client:
+        if not init_storage_clients():
+            return create_error_response("Storage not initialized", 500)
+    
+    # Verify API key
+    if not verify_api_key(req):
+        return create_error_response("Unauthorized", 401)
+    
+    try:
+        # Get device status from table storage
+        entity = table_client.get_entity(partition_key="device", row_key="status")
+        
+        last_seen_str = entity.get("last_seen")
+        if last_seen_str:
+            last_seen = datetime.fromisoformat(last_seen_str.replace('Z', '+00:00'))
+            now = datetime.now(timezone.utc)
+            seconds_ago = (now - last_seen).total_seconds()
+            
+            # Consider device online if it polled within last 60 seconds
+            is_online = seconds_ago < 60
+            
+            response_data = {
+                "online": is_online,
+                "last_seen": last_seen_str,
+                "seconds_ago": int(seconds_ago)
+            }
+        else:
+            response_data = {
+                "online": False,
+                "last_seen": None,
+                "seconds_ago": None
+            }
+        
+        logging.info(f"Device status: {response_data}")
+        return create_success_response(response_data)
+        
+    except Exception as e:
+        if "ResourceNotFound" in str(e):
+            logging.info("Device has never connected")
+            return create_success_response({
+                "online": False,
+                "last_seen": None,
+                "seconds_ago": None
+            })
+        
+        logging.error(f"Error getting device status: {str(e)}")
         return create_error_response(f"Internal error: {str(e)}", 500)
 
 

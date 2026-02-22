@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentMotorState = null;
     let frequencyTimeout = null;
     let statePollingInterval = null;
+    let deviceStatusPollingInterval = null;
     
     // Load saved configuration from localStorage
     loadConfiguration();
@@ -90,6 +91,7 @@ document.addEventListener('DOMContentLoaded', function() {
             isConfigured = true;
             updateStatus('Configuration loaded from storage');
             startStatePolling();
+            startDeviceStatusPolling();
         }
     }
     
@@ -109,8 +111,9 @@ document.addEventListener('DOMContentLoaded', function() {
         isConfigured = true;
         updateStatus('Configuration saved successfully');
         
-        // Start polling for state
+        // Start polling for state and device status
         startStatePolling();
+        startDeviceStatusPolling();
     }
     
     // Test connection to cloud backend
@@ -317,6 +320,70 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Then poll every 2 seconds
         statePollingInterval = setInterval(pollMotorState, 2000);
+    }
+    
+    // Start polling for device status
+    function startDeviceStatusPolling() {
+        // Clear any existing interval
+        if (deviceStatusPollingInterval) {
+            clearInterval(deviceStatusPollingInterval);
+        }
+        
+        // Poll immediately
+        pollDeviceStatus();
+        
+        // Then poll every 5 seconds
+        deviceStatusPollingInterval = setInterval(pollDeviceStatus, 5000);
+    }
+    
+    // Poll device status
+    async function pollDeviceStatus() {
+        if (!isConfigured) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${apiEndpoint}/device/status`, {
+                headers: {
+                    'X-API-Key': apiKey
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                updateDeviceStatus(data);
+            }
+        } catch (error) {
+            // Silently fail - don't spam console with errors
+            updateDeviceStatus({ online: false, last_seen: null, seconds_ago: null });
+        }
+    }
+    
+    // Update device status display
+    function updateDeviceStatus(status) {
+        const deviceStatus = document.getElementById('device-status');
+        
+        if (status.online) {
+            deviceStatus.textContent = 'Online';
+            deviceStatus.className = 'status-indicator connected';
+        } else {
+            if (status.seconds_ago !== null && status.seconds_ago !== undefined) {
+                const minutes = Math.floor(status.seconds_ago / 60);
+                const seconds = status.seconds_ago % 60;
+                
+                let timeText = '';
+                if (minutes > 0) {
+                    timeText = `${minutes}m ${seconds}s ago`;
+                } else {
+                    timeText = `${seconds}s ago`;
+                }
+                
+                deviceStatus.textContent = `Offline (${timeText})`;
+            } else {
+                deviceStatus.textContent = 'Never Connected';
+            }
+            deviceStatus.className = 'status-indicator disconnected';
+        }
     }
     
     // Status update function with log limit
