@@ -30,6 +30,7 @@ private:
     void handleCloudConfig();
     void handleCloudStatus();
     void handleCloudTest();
+    void handleInfo();
     void sendJson(int statusCode, const String& payload);
     void serveFile(const String& path, const String& contentType);
     void updateStatusLED();

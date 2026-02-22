@@ -5,6 +5,7 @@
 #include "web_server.h"
 #include "motor_controller_tmc2209.h"
 #include "cloud_client.h"
+#include "version.h"
 
 // ATOM S3 Lite RGB LED configuration
 #define LED_PIN 35
@@ -135,7 +136,13 @@ void setup() {
     FastLED.setBrightness(50); // Lower brightness for embedded device
     
     // Boot sequence
+    Serial.println("==============================================");
     Serial.println("[BOOT] WebMotor Controller starting...");
+    Serial.print("[VERSION] "); Serial.println(VERSION_SEMVER);
+    Serial.print("[BUILD] "); Serial.println(VERSION_BUILD_TIMESTAMP);
+    Serial.print("[COMMIT] "); Serial.print(VERSION_SHORT_SHA);
+    Serial.print(" ("); Serial.print(VERSION_BRANCH); Serial.println(")");
+    Serial.println("==============================================");
     setLEDState(LED_BOOT);
     
     // Show boot pattern for 2 seconds

@@ -6,6 +6,7 @@
 #include "motor_controller_tmc2209.h"
 #include "wifi_manager.h"
 #include "cloud_client.h"
+#include "version.h"
 
 // Reference to the LED array from main.cpp
 extern CRGB leds[];
@@ -55,6 +56,12 @@ void WebServerController::handle() {
 
 void WebServerController::registerRoutes() {
     Serial.println("[WEB] Setting up API endpoints...");
+    
+    // Version/Info route
+    server.on("/api/info", HTTP_GET, [this]() { 
+        Serial.println("[API] GET /api/info");
+        this->handleInfo(); 
+    });
     
     // API routes
     server.on("/api/motor/status", HTTP_GET, [this]() { 
@@ -147,7 +154,27 @@ void WebServerController::handleMotorStatus() {
     
     sendJson(200, jsonResponse);
 }
+void WebServerController::handleInfo() {
+    Serial.println("[API] Processing info request");
 
+    JsonDocument doc;
+    doc["version"] = VERSION_SEMVER;
+    doc["fullVersion"] = VERSION_FULL;
+    doc["branch"] = VERSION_BRANCH;
+    doc["commit"] = VERSION_SHORT_SHA;
+    doc["commitFull"] = VERSION_SHA;
+    doc["buildTimestamp"] = VERSION_BUILD_TIMESTAMP;
+    doc["platform"] = "ESP32-S3";
+    doc["board"] = "ATOM S3 LITE";
+
+    String jsonResponse;
+    serializeJson(doc, jsonResponse);
+    
+    Serial.print("[API] Sending version info: ");
+    Serial.println(jsonResponse);
+    
+    sendJson(200, jsonResponse);
+}
 namespace {
 MotorMode parseMode(const JsonVariant& value, MotorMode fallback) {
     if (value.is<int>()) {
