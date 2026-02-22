@@ -10,12 +10,18 @@
 #define WIFI_PASSWORD "your_password"
 #endif
 
-// Pin Assignments
+// Pin Assignments - TMC2209 Driver
 #define STEP_PIN 7
 #define DIR_PIN 8
 #define EN_PIN 38
 #define MS1_PIN 5
 #define MS2_PIN 6
+
+// Pin Assignments - ULN2003 Driver (for 28BYJ-48 stepper)
+#define ULN2003_IN1_PIN 1
+#define ULN2003_IN2_PIN 2
+#define ULN2003_IN3_PIN 3
+#define ULN2003_IN4_PIN 4
 
 // Motor Control Constants
 #define MAX_FREQUENCY 10000

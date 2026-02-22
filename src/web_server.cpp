@@ -3,7 +3,7 @@
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
 #include <FastLED.h>
-#include "motor_controller_tmc2209.h"
+#include "abstract_motor_controller.h"
 #include "wifi_manager.h"
 #include "cloud_client.h"
 #include "version.h"
@@ -22,7 +22,7 @@ WebServerController::WebServerController()
       cloud(nullptr),
       cachedState{0, 0, true, MotorMode::STOPPED} {}
 
-void WebServerController::begin(MotorControllerTMC2209& motorController, WifiManager& wifiManager, CloudClient& cloudClient) {
+void WebServerController::begin(AbstractMotorController& motorController, WifiManager& wifiManager, CloudClient& cloudClient) {
     Serial.println("[WEB] Initializing WebServer...");
     
     // Initialize SPIFFS
@@ -239,7 +239,7 @@ void WebServerController::handleMotorControl() {
         uint16_t microsteps = doc["microsteps"].as<uint16_t>();
         Serial.print("[MOTOR] Setting microsteps: ");
         Serial.println(microsteps);
-        motor->setMicrosteps(microsteps);
+        motor->setMicrostepMode(microsteps);
     }
     if (!doc["frequency"].isNull()) {
         uint32_t frequency = doc["frequency"].as<uint32_t>();
@@ -255,10 +255,22 @@ void WebServerController::handleMotorControl() {
         motor->setDirection(direction);
     }
     if (!doc["mode"].isNull()) {
-        const MotorMode mode = parseMode(doc["mode"], motor->getMode());
+        const MotorMode mode = parseMode(doc["mode"], motor->getMotorState().mode);
         Serial.print("[MOTOR] Setting mode: ");
         Serial.println((int)mode);
-        motor->setMode(mode);
+        
+        // Use abstract interface methods instead of setMode
+        switch (mode) {
+            case MotorMode::RUNNING:
+                motor->start();
+                break;
+            case MotorMode::STOPPED:
+                motor->stop();
+                break;
+            case MotorMode::RELEASED:
+                motor->release();
+                break;
+        }
     }
 
     cachedState = motor->getMotorState();
