@@ -1,15 +1,32 @@
-# WebMotor REST API Simulator
+# WebMotor Simulators
 
-A Python-based simulator for testing the WebMotor web interface without requiring the actual ATOM S3 LITE hardware.
+Python-based simulators for testing the WebMotor system without requiring the actual ATOM S3 LITE hardware.
+
+## Simulators
+
+### 1. Local REST API Simulator (`webmotor_simulator.py`)
+Simulates the local web interface served directly from the ESP32.
+
+### 2. Cloud Controller Simulator (`cloud_controller_simulator.py`)
+Simulates an ESP32 controller connecting to the Azure cloud backend.
 
 ## Features
 
+### Local Simulator
 - **REST API Implementation**: Full implementation of the WebMotor REST API
 - **Request Validation**: JSON schema validation for all API requests
 - **Logging**: Comprehensive logging of all API calls and state changes
 - **Web UI Serving**: Serves the actual web UI files from the data directory
 - **CORS Support**: Enables cross-origin requests for development
 - **Educational Focus**: Designed for learning and testing the WebMotor system
+
+### Cloud Controller Simulator
+- **Cloud Integration**: Connects to Azure cloud backend
+- **Long Polling**: Polls for commands from cloud (30s timeout)
+- **State Synchronization**: Pushes motor state every 2 seconds
+- **Position Simulation**: Simulates realistic motor position changes
+- **Command Processing**: Handles all motor control commands from cloud
+- **Real-time Testing**: Test cloud frontend without ESP32 hardware
 
 ## Setup
 
@@ -25,24 +42,46 @@ pip install -r requirements.txt
 
 ## Usage
 
-### Quick Start
+### Local Simulator - Quick Start
 ```bash
 python run_simulator.py
 ```
 
-### Advanced Usage
+### Local Simulator - Advanced Usage
 ```bash
 python webmotor_simulator.py --host 0.0.0.0 --port 8080 --debug
 ```
 
+### Cloud Controller Simulator
+```bash
+# Basic usage with Azure Static Web App
+python cloud_controller_simulator.py --key YOUR_API_KEY
+
+# Custom endpoint
+python cloud_controller_simulator.py \
+  --endpoint https://your-app.azurestaticapps.net/api \
+  --key YOUR_API_KEY
+
+# Verbose logging
+python cloud_controller_simulator.py --key YOUR_API_KEY --verbose
+```
+
 ### Command Line Options
+
+**Local Simulator:**
 - `--host`: Host to bind to (default: 127.0.0.1)
 - `--port`: Port to bind to (default: 8080)
 - `--debug`: Enable Flask debug mode
 
+**Cloud Controller Simulator:**
+- `--endpoint`: Azure Function API endpoint (default: https://calm-river-0a48e7503.6.azurestaticapps.net/api)
+- `--key`: API key for authentication (required)
+- `--verbose`, `-v`: Enable verbose debug logging
+
 ## API Endpoints
 
-The simulator implements all WebMotor REST API endpoints:
+### Local Simulator
+The local simulator implements all WebMotor REST API endpoints:
 
 ### Motor Control
 - `GET /api/motor/status` - Get current motor status
@@ -55,8 +94,16 @@ The simulator implements all WebMotor REST API endpoints:
 - `GET /` - Serve the main web interface
 - `GET /<filename>` - Serve static files (CSS, JS)
 
+### Cloud Backend API
+The cloud controller simulator connects to these endpoints:
+- `GET /api/health` - Test connection to backend
+- `GET /api/commands/poll` - Long poll for commands (30s)
+- `POST /api/state` - Push motor state to cloud
+- `GET /api/state` - Get current motor state
+
 ## Testing
 
+### Local Simulator Testing
 Access the web interface at: http://127.0.0.1:8080
 
 The simulator logs all API calls and validates requests according to the OpenAPI specification. Use the web UI to test:
@@ -65,6 +112,35 @@ The simulator logs all API calls and validates requests according to the OpenAPI
 2. **Mode Control**: Start, stop, release motor
 3. **WiFi Config**: Test credential saving
 4. **Status Updates**: Verify periodic status polling
+
+### Cloud Controller Testing
+
+1. **Start the cloud controller simulator:**
+   ```bash
+   python cloud_controller_simulator.py --key e70652bed1a4062be80e0c7c0c6a11d517ab4ab227f79baa0994ac8f33725613
+   ```
+
+2. **Open the cloud frontend:**
+   ```
+   https://calm-river-0a48e7503.6.azurestaticapps.net
+   ```
+
+3. **Configure the cloud frontend:**
+   - Enter API Key: `e70652bed1a4062be80e0c7c0c6a11d517ab4ab227f79baa0994ac8f33725613`
+   - Click "Save Configuration"
+   - Click "Test Connection" (should show "✓ Connected")
+
+4. **Test motor control from the cloud:**
+   - Adjust frequency slider → Simulator logs command received
+   - Toggle direction → Position changes direction
+   - Change microstepping → Simulator updates parameters
+   - Click Start → Motor mode changes to RUNNING, position updates
+   - Click Stop → Motor mode changes to STOPPED, position freezes
+
+5. **Verify state synchronization:**
+   - Cloud frontend updates motor status every 2 seconds
+   - Position value changes when motor is running
+   - Status indicators reflect current state
 
 ## Validation
 
