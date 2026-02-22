@@ -40,6 +40,13 @@ void CloudClient::handle() {
         return;
     }
     
+    // Log when cloud sync actually starts working (only once)
+    static bool syncStartLogged = false;
+    if (!syncStartLogged) {
+        Serial.println(\"[CLOUD] *** Cloud sync is now ACTIVE - polling for commands and pushing state ***\");
+        syncStartLogged = true;
+    }
+    
     unsigned long now = millis();
     
     // Push state periodically
@@ -61,17 +68,31 @@ void CloudClient::setEnabled(bool enabled) {
 }
 
 void CloudClient::getConfig(String& apiEndpoint, String& apiKey, bool& enabled) const {
+    Serial.print("[CLOUD] getConfig called - enabled_: ");
+    Serial.println(enabled_ ? "true" : "false");
+    
     apiEndpoint = apiEndpoint_;
     apiKey = apiKey_;
     enabled = enabled_;
 }
 
 bool CloudClient::setConfig(const String& apiEndpoint, const String& apiKey, bool enabled) {
+    Serial.print("[CLOUD] setConfig called - enabled parameter: ");
+    Serial.println(enabled ? "true" : "false");
+    
     apiEndpoint_ = apiEndpoint;
     apiKey_ = apiKey;
     enabled_ = enabled;
     
-    return saveConfig();
+    Serial.print("[CLOUD] enabled_ after assignment: ");
+    Serial.println(enabled_ ? "true" : "false");
+    
+    bool result = saveConfig();
+    
+    Serial.print("[CLOUD] enabled_ after saveConfig: ");
+    Serial.println(enabled_ ? "true" : "false");
+    
+    return result;
 }
 
 bool CloudClient::testConnection() {
@@ -123,9 +144,18 @@ void CloudClient::loadConfig() {
     preferences_.end();
     
     Serial.println("[CLOUD] Configuration loaded from NVS");
+    Serial.print("[CLOUD] Endpoint: ");
+    Serial.println(apiEndpoint_.isEmpty() ? "(empty)" : apiEndpoint_);
+    Serial.print("[CLOUD] API Key: ");
+    Serial.println(apiKey_.isEmpty() ? "(empty)" : "(set)");
+    Serial.print("[CLOUD] Enabled: ");
+    Serial.println(enabled_ ? "true" : "false");
 }
 
 bool CloudClient::saveConfig() {
+    Serial.print("[CLOUD] saveConfig - saving enabled_: ");
+    Serial.println(enabled_ ? "true" : "false");
+    
     preferences_.begin(NVS_NAMESPACE, false); // Read-write
     
     preferences_.putString(KEY_ENDPOINT, apiEndpoint_);
@@ -135,6 +165,14 @@ bool CloudClient::saveConfig() {
     preferences_.end();
     
     Serial.println("[CLOUD] Configuration saved to NVS");
+    
+    // Verify by reading back
+    preferences_.begin(NVS_NAMESPACE, true);
+    bool savedValue = preferences_.getBool(KEY_ENABLED, false);
+    preferences_.end();
+    Serial.print("[CLOUD] Verification read from NVS - enabled: ");
+    Serial.println(savedValue ? "true" : "false");
+    
     return true;
 }
 

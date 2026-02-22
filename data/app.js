@@ -141,6 +141,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     updateStatus(`Cloud config saved. Sync ${enabled ? 'enabled' : 'disabled'}`);
                     // Clear API key field for security
                     document.getElementById('cloud-api-key').value = '';
+                    // Reload cloud status to confirm the saved state
+                    setTimeout(() => loadCloudStatus(), 500);
                 })
                 .catch(error => updateStatus(`Error saving cloud config: ${error.message}`));
         } else {
