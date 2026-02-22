@@ -39,12 +39,26 @@ def init_storage_clients():
             STORAGE_CONNECTION_STRING,
             QUEUE_NAME
         )
-        queue_client.create_queue()
+        try:
+            queue_client.create_queue()
+            logging.info(f"Created queue: {QUEUE_NAME}")
+        except Exception as e:
+            if "already exists" in str(e).lower():
+                logging.info(f"Queue {QUEUE_NAME} already exists")
+            else:
+                raise
         
         # Initialize Table client
         table_service = TableServiceClient.from_connection_string(STORAGE_CONNECTION_STRING)
         table_client = table_service.get_table_client(TABLE_NAME)
-        table_client.create_table()
+        try:
+            table_client.create_table()
+            logging.info(f"Created table: {TABLE_NAME}")
+        except Exception as e:
+            if "already exists" in str(e).lower():
+                logging.info(f"Table {TABLE_NAME} already exists")
+            else:
+                raise
         
         logging.info("Storage clients initialized successfully")
         return True
