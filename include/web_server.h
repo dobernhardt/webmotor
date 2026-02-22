@@ -5,18 +5,18 @@
 #include <WebServer.h>
 #include "state.h"
 
-class MotorController;
+class MotorControllerTMC2209;
 class WifiManager;
 
 class WebServerController {
 public:
     WebServerController();
-    void begin(MotorController& motorController, WifiManager& wifiManager);
+    void begin(MotorControllerTMC2209& motorController, WifiManager& wifiManager);
     void handle();
 
 private:
     ::WebServer server;
-    MotorController* motor;
+    MotorControllerTMC2209* motor;
     WifiManager* wifi;
     MotorState cachedState;
 

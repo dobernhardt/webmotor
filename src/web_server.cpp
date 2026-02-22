@@ -3,7 +3,7 @@
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
 #include <FastLED.h>
-#include "motor_controller.h"
+#include "motor_controller_tmc2209.h"
 #include "wifi_manager.h"
 
 // Reference to the LED array from main.cpp
@@ -19,7 +19,7 @@ WebServerController::WebServerController()
       wifi(nullptr),
       cachedState{0, 0, true, MotorMode::STOPPED} {}
 
-void WebServerController::begin(MotorController& motorController, WifiManager& wifiManager) {
+void WebServerController::begin(MotorControllerTMC2209& motorController, WifiManager& wifiManager) {
     Serial.println("[WEB] Initializing WebServer...");
     
     // Initialize SPIFFS
