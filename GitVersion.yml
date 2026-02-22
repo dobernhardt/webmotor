@@ -3,17 +3,17 @@ next-version: 0.1.0
 branches:
   main:
     regex: ^main$
-    tag: ''
+    label: ''
     increment: Patch
   add_cloud:
     regex: ^add[_-]cloud$
-    tag: beta
+    label: beta
     increment: Minor
   feature:
     regex: ^features?[/-]
-    tag: alpha
+    label: alpha
     increment: Minor
   pull-request:
     regex: ^(pull|pull\-requests|pr)[/-]
-    tag: pr
+    label: pr
     increment: Inherit
