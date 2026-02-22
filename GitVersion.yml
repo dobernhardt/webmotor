@@ -2,18 +2,6 @@ mode: ContinuousDeployment
 next-version: 0.1.0
 branches:
   main:
-    regex: ^main$
-    label: ''
+    mode: ContinuousDeployment
     increment: Patch
-  add_cloud:
-    regex: ^add[_-]cloud$
-    label: beta
-    increment: Minor
-  feature:
-    regex: ^features?[/-]
-    label: alpha
-    increment: Minor
-  pull-request:
-    regex: ^(pull|pull\-requests|pr)[/-]
-    label: pr
-    increment: Inherit
+    is-release-branch: true
