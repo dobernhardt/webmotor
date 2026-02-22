@@ -3,7 +3,7 @@
 
 document.addEventListener('DOMContentLoaded', function() {
     // Cloud configuration
-    let apiEndpoint = '';
+    const apiEndpoint = '/api'; // Hardcoded since frontend and API are deployed together
     let apiKey = '';
     let isConfigured = false;
     let isConnected = false;
@@ -80,11 +80,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Load configuration from localStorage
     function loadConfiguration() {
-        apiEndpoint = localStorage.getItem('webmotor_api_endpoint') || '';
         apiKey = localStorage.getItem('webmotor_api_key') || '';
         
-        if (apiEndpoint && apiKey) {
-            document.getElementById('api-endpoint').value = apiEndpoint;
+        if (apiKey) {
             document.getElementById('api-key').value = apiKey;
             isConfigured = true;
             updateStatus('Configuration loaded from storage');
@@ -94,19 +92,15 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Save configuration to localStorage
     function saveConfiguration() {
-        const endpoint = document.getElementById('api-endpoint').value.trim();
         const key = document.getElementById('api-key').value.trim();
         
-        if (!endpoint || !key) {
-            updateStatus('Error: Please enter both endpoint and API key');
+        if (!key) {
+            updateStatus('Error: Please enter API key');
             return;
         }
         
-        // Remove trailing slash from endpoint
-        apiEndpoint = endpoint.replace(/\/$/, '');
         apiKey = key;
         
-        localStorage.setItem('webmotor_api_endpoint', apiEndpoint);
         localStorage.setItem('webmotor_api_key', apiKey);
         
         isConfigured = true;
