@@ -3,7 +3,6 @@
 
 #include "config.h"
 #include "state.h"
-#include <driver/rmt.h>
 
 class MotorController {
 public:
@@ -26,12 +25,13 @@ public:
     
 private:
     MotorState currentState;
-    rmt_channel_t rmtChannel;
-    bool rmtConfigured;
+    TaskHandle_t stepTaskHandle;
+    volatile bool taskRunning;
     
     // Internal methods
-    void configureRMT();
-    void updateRMT();
+    void startStepTask();
+    void stopStepTask();
+    static void stepTask(void* parameter);
     void setMicrostepPins(uint16_t microsteps);
     void setPinStates();
     uint16_t validateMicrosteps(uint16_t requested);
