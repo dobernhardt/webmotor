@@ -129,24 +129,26 @@ document.addEventListener('DOMContentLoaded', function() {
         const apiKey = document.getElementById('cloud-api-key').value;
         const enabled = cloudEnabledToggle.checked;
         
-        if (endpoint && apiKey) {
+        if (endpoint) {
             const cloudConfig = {
                 apiEndpoint: endpoint,
-                apiKey: apiKey,
+                apiKey: apiKey,  // Empty string means "keep existing key"
                 enabled: enabled
             };
             
             sendRequest('/api/cloud/config', 'POST', cloudConfig)
                 .then(() => {
                     updateStatus(`Cloud config saved. Sync ${enabled ? 'enabled' : 'disabled'}`);
-                    // Clear API key field for security
-                    document.getElementById('cloud-api-key').value = '';
+                    // Only clear API key field if it was provided
+                    if (apiKey) {
+                        document.getElementById('cloud-api-key').value = '';
+                    }
                     // Reload cloud status to confirm the saved state
                     setTimeout(() => loadCloudStatus(), 500);
                 })
                 .catch(error => updateStatus(`Error saving cloud config: ${error.message}`));
         } else {
-            updateStatus('Error: Please enter endpoint and API key');
+            updateStatus('Error: Please enter endpoint');
         }
     });
     

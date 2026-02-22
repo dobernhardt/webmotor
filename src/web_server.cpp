@@ -436,9 +436,19 @@ void WebServerController::handleCloudConfig() {
     
     Serial.print("[CLOUD] Saving configuration - Endpoint: ");
     Serial.println(apiEndpoint);
+    Serial.print("[CLOUD] API Key provided: ");
+    Serial.println(apiKey.isEmpty() ? "false (keeping existing)" : "true");
     Serial.print("[CLOUD] Enabled: ");
     Serial.println(enabled ? "true" : "false");
-    // Note: API key not logged for security
+    
+    // If API key is empty, keep the existing one
+    if (apiKey.isEmpty()) {
+        String currentEndpoint, currentKey;
+        bool currentEnabled;
+        cloud->getConfig(currentEndpoint, currentKey, currentEnabled);
+        apiKey = currentKey;
+        Serial.println("[CLOUD] Using existing API key");
+    }
     
     if (cloud->setConfig(apiEndpoint, apiKey, enabled)) {
         Serial.println("[CLOUD] Configuration saved successfully");
