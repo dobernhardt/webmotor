@@ -9,7 +9,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
-from azure.storage.queue import QueueClient, BinaryBase64EncodePolicy
+from azure.storage.queue import QueueClient
 from azure.data.tables import TableServiceClient, UpdateMode
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
@@ -34,11 +34,10 @@ def init_storage_clients():
         return False
     
     try:
-        # Initialize Queue client
+        # Initialize Queue client (using default text encoding for JSON)
         queue_client = QueueClient.from_connection_string(
             STORAGE_CONNECTION_STRING,
-            QUEUE_NAME,
-            message_encode_policy=BinaryBase64EncodePolicy()
+            QUEUE_NAME
         )
         queue_client.create_queue()
         
