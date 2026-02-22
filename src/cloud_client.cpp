@@ -43,7 +43,7 @@ void CloudClient::handle() {
     // Log when cloud sync actually starts working (only once)
     static bool syncStartLogged = false;
     if (!syncStartLogged) {
-        Serial.println(\"[CLOUD] *** Cloud sync is now ACTIVE - polling for commands and pushing state ***\");
+        Serial.println("[CLOUD] *** Cloud sync is now ACTIVE - polling for commands and pushing state ***");
         syncStartLogged = true;
     }
     
