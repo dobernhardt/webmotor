@@ -4,6 +4,9 @@
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
 #include "state.h"
 
 /**
@@ -35,6 +38,7 @@ public:
     
     /**
      * @brief Enable or disable cloud sync
+     * This will start/stop the background polling task
      */
     void setEnabled(bool enabled);
     
@@ -85,13 +89,19 @@ private:
     // Command handling
     bool hasPendingCommand_;
     String pendingCommand_;
+    SemaphoreHandle_t commandMutex_;  // Protect command access
     
     // HTTP client
     HTTPClient http_;
+    HTTPClient pollHttp_;  // Separate HTTP client for polling task
+    
+    // FreeRTOS task for background polling
+    TaskHandle_t pollTaskHandle_;
+    volatile bool pollTaskRunning_;
     
     // Timing constants (in milliseconds)
     static constexpr unsigned long STATE_PUSH_INTERVAL = 2000;  // 2 seconds
-    static constexpr unsigned long COMMAND_POLL_INTERVAL = 100; // Check every 100ms if we should poll
+    static constexpr unsigned long COMMAND_POLL_INTERVAL = 0;    // Not used with task-based polling
     
     /**
      * @brief Load configuration from NVS
@@ -109,9 +119,24 @@ private:
     void pushState();
     
     /**
-     * @brief Poll for commands from cloud (long poll with 30s timeout)
+     * @brief Poll for commands from cloud (called by background task)
      */
     void pollCommands();
+    
+    /**
+     * @brief Start background polling task
+     */
+    void startPollTask();
+    
+    /**
+     * @brief Stop background polling task
+     */
+    void stopPollTask();
+    
+    /**
+     * @brief Static task function for FreeRTOS
+     */
+    static void pollTaskFunction(void* parameter);
     
     /**
      * @brief Send HTTP request with API key authentication

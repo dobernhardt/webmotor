@@ -7,7 +7,7 @@ constexpr const char* NVS_NAMESPACE = "cloud";
 constexpr const char* KEY_ENDPOINT = "endpoint";
 constexpr const char* KEY_API_KEY = "apikey";
 constexpr const char* KEY_ENABLED = "enabled";
-constexpr int HTTP_TIMEOUT_MS = 35000; // 35 seconds (30s long poll + 5s margin)
+constexpr int HTTP_TIMEOUT_MS = 35000; // 35 seconds for long polling in background task
 }
 
 CloudClient::CloudClient()
@@ -15,7 +15,12 @@ CloudClient::CloudClient()
       lastStatePush_(0),
       lastCommandPoll_(0),
       hasPendingCommand_(false),
-      currentState_{0, 0, true, MotorMode::STOPPED} {}
+      pollTaskHandle_(nullptr),
+      pollTaskRunning_(false),
+      currentState_{0, 0, true, MotorMode::STOPPED} {
+    // Create mutex for command synchronization
+    commandMutex_ = xSemaphoreCreateMutex();
+}
 
 void CloudClient::begin() {
     Serial.println("[CLOUD] Initializing cloud client...");
@@ -25,6 +30,7 @@ void CloudClient::begin() {
         Serial.println("[CLOUD] Cloud sync enabled");
         Serial.print("[CLOUD] Endpoint: ");
         Serial.println(apiEndpoint_);
+        startPollTask();
     } else {
         Serial.println("[CLOUD] Cloud sync disabled");
     }
@@ -40,31 +46,33 @@ void CloudClient::handle() {
         return;
     }
     
-    // Log when cloud sync actually starts working (only once)
-    static bool syncStartLogged = false;
-    if (!syncStartLogged) {
-        Serial.println("[CLOUD] *** Cloud sync is now ACTIVE - polling for commands and pushing state ***");
-        syncStartLogged = true;
-    }
-    
     unsigned long now = millis();
     
-    // Push state periodically
+    // Push state periodically (main loop handles this)
     if (now - lastStatePush_ >= STATE_PUSH_INTERVAL) {
         pushState();
         lastStatePush_ = now;
     }
     
-    // Poll for commands (only if not currently waiting for a command)
-    if (!hasPendingCommand_ && now - lastCommandPoll_ >= COMMAND_POLL_INTERVAL) {
-        pollCommands();
-        lastCommandPoll_ = now;
-    }
+    // Polling is now handled by background task
 }
 
 void CloudClient::setEnabled(bool enabled) {
+    if (enabled_ == enabled) {
+        return;  // No change
+    }
+    
     enabled_ = enabled;
     saveConfig();
+    
+    // Start or stop the polling task
+    if (enabled && !apiEndpoint_.isEmpty() && !apiKey_.isEmpty()) {
+        Serial.println("[CLOUD] Enabling cloud sync...");
+        startPollTask();
+    } else {
+        Serial.println("[CLOUD] Disabling cloud sync...");
+        stopPollTask();
+    }
 }
 
 void CloudClient::getConfig(String& apiEndpoint, String& apiKey, bool& enabled) const {
@@ -128,10 +136,16 @@ String CloudClient::getCommand() {
         return "";
     }
     
-    hasPendingCommand_ = false;
-    String cmd = pendingCommand_;
-    pendingCommand_ = "";
-    return cmd;
+    // Lock mutex to access command
+    if (xSemaphoreTake(commandMutex_, portMAX_DELAY) == pdTRUE) {
+        hasPendingCommand_ = false;
+        String cmd = pendingCommand_;
+        pendingCommand_ = "";
+        xSemaphoreGive(commandMutex_);
+        return cmd;
+    }
+    
+    return "";
 }
 
 void CloudClient::loadConfig() {
@@ -267,4 +281,66 @@ int CloudClient::sendRequest(const String& endpoint, const String& method, const
     }
     
     return httpCode;
+}
+
+void CloudClient::startPollTask() {
+    if (pollTaskHandle_ != nullptr) {
+        Serial.println("[CLOUD] Poll task already running");
+        return;
+    }
+    
+    pollTaskRunning_ = true;
+    
+    // Create task on Core 0 (Core 1 is used by Arduino loop)
+    xTaskCreatePinnedToCore(
+        pollTaskFunction,   // Task function
+        "CloudPoll",        // Task name
+        8192,              // Stack size (bytes)
+        this,              // Parameter passed to task
+        1,                 // Priority
+        &pollTaskHandle_,  // Task handle
+        0                  // Core 0
+    );
+    
+    Serial.println("[CLOUD] *** Background polling task started on Core 0 ***");
+}
+
+void CloudClient::stopPollTask() {
+    if (pollTaskHandle_ == nullptr) {
+        return;
+    }
+    
+    pollTaskRunning_ = false;
+    
+    // Wait a bit for task to finish current operation
+    vTaskDelay(pdMS_TO_TICKS(100));
+    
+    // Delete the task
+    vTaskDelete(pollTaskHandle_);
+    pollTaskHandle_ = nullptr;
+    
+    Serial.println("[CLOUD] Background polling task stopped");
+}
+
+void CloudClient::pollTaskFunction(void* parameter) {
+    CloudClient* client = static_cast<CloudClient*>(parameter);
+    
+    Serial.println("[CLOUD] Poll task running - long polling active");
+    
+    while (client->pollTaskRunning_) {
+        // Check WiFi connection
+        if (WiFi.status() != WL_CONNECTED) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+        
+        // Poll for commands (blocks for up to 35 seconds)
+        client->pollCommands();
+        
+        // Small delay before next poll
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    
+    Serial.println("[CLOUD] Poll task exiting");
+    vTaskDelete(NULL);
 }

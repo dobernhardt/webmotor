@@ -20,7 +20,7 @@ STORAGE_CONNECTION_STRING = os.environ.get("STORAGE_CONNECTION_STRING")
 API_KEY = os.environ.get("API_KEY")
 QUEUE_NAME = os.environ.get("QUEUE_NAME", "webmotor-commands")
 TABLE_NAME = os.environ.get("TABLE_NAME", "webmotorstate")
-LONG_POLL_TIMEOUT = 30  # seconds
+LONG_POLL_TIMEOUT = 30  # seconds - ESP32 now uses background task, can handle long polls
 
 # Initialize storage clients
 queue_client = None
