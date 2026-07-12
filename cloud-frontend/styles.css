@@ -1,4 +1,4 @@
-* {
+*  {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -125,28 +125,6 @@ h1 {
     border: 1px solid #d6d8db;
 }
 
-.status-indicator.ap-mode {
-    background-color: #fff3cd;
-    color: #856404;
-    border: 1px solid #ffeaa7;
-}
-
-.status-indicator.unknown {
-    background-color: #e2e3e5;
-    color: #6c757d;
-    border: 1px solid #d6d8db;
-}
-
-.network-info {
-    font-size: 12px;
-    color: #6c757d;
-    font-family: monospace;
-    background-color: #f8f9fa;
-    padding: 2px 6px;
-    border-radius: 4px;
-    border: 1px solid #e9ecef;
-}
-
 .control-group {
     margin-bottom: 20px;
 }
@@ -172,14 +150,13 @@ select:focus, input:focus {
     border-color: #52a9de;
 }
 
-/* Frequency slider container */
+/* Frequency slider */
 .frequency-container {
     display: flex;
     align-items: center;
     gap: 15px;
 }
 
-/* Range slider styling */
 input[type="range"] {
     flex: 1;
     height: 8px;
@@ -187,26 +164,15 @@ input[type="range"] {
     background: #ddd;
     outline: none;
     -webkit-appearance: none;
-    appearance: none;
 }
 
 input[type="range"]::-webkit-slider-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #52a9de;
+    cursor: pointer;
     -webkit-appearance: none;
-    appearance: none;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: #52a9de;
-    cursor: pointer;
-}
-
-input[type="range"]::-moz-range-thumb {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: #52a9de;
-    cursor: pointer;
-    border: none;
 }
 
 .frequency-display {
@@ -217,63 +183,7 @@ input[type="range"]::-moz-range-thumb {
     font-weight: 500;
 }
 
-/* Toggle switch styling */
-.toggle-container {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.toggle-input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-
-.toggle-switch {
-    position: relative;
-    display: inline-block;
-    width: 50px;
-    height: 26px;
-    background-color: #ccc;
-    border-radius: 13px;
-    cursor: pointer;
-    transition: background-color 0.3s;
-}
-
-.toggle-switch::before {
-    content: '';
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background-color: white;
-    top: 3px;
-    left: 3px;
-    transition: transform 0.3s;
-}
-
-.toggle-input:checked + .toggle-switch {
-    background-color: #52a9de;
-}
-
-.toggle-input:checked + .toggle-switch::before {
-    transform: translateX(24px);
-}
-
-.toggle-text {
-    color: #5a6c7d;
-    font-weight: 500;
-    min-width: 30px;
-}
-
-/* Button styling */
-.mode-buttons {
-    display: flex;
-    gap: 10px;
-    margin-top: 10px;
-}
-
+/* Buttons */
 .btn {
     padding: 10px 20px;
     border: none;
@@ -281,157 +191,87 @@ input[type="range"]::-moz-range-thumb {
     cursor: pointer;
     font-size: 14px;
     font-weight: 500;
-    transition: all 0.3s;
-    position: relative;
 }
 
-.btn-primary {
-    background-color: #52a9de;
-    color: white;
+.btn-primary { background: #52a9de; color: white; }
+.btn-secondary { background: #6c757d; color: white; }
+.btn-info { background: #17a2b8; color: white; }
+
+/* =========================
+   🕹️ JOYSTICK ADDITION
+   ========================= */
+
+.joystick-area {
+    display: flex;
+    justify-content: center;
+    margin: 20px 0;
 }
 
-.btn-primary:hover {
-    background-color: #4a9ad1;
-}
-
-.btn-primary.active {
-    background-color: #1e7e34;
-    box-shadow: 0 0 0 3px rgba(30, 126, 52, 0.25);
-}
-
-.btn-secondary {
-    background-color: #6c757d;
-    color: white;
-}
-
-.btn-secondary:hover {
-    background-color: #5a6268;
-}
-
-.btn-secondary.active {
-    background-color: #dc3545;
-    box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.25);
-}
-
-.btn-info {
-    background-color: #17a2b8;
-    color: white;
-}
-
-.btn-info:hover {
-    background-color: #138496;
-}
-
-.btn-info.active {
-    background-color: #fd7e14;
-    box-shadow: 0 0 0 3px rgba(253, 126, 20, 0.25);
-}
-
-#save-wifi {
-    width: 100%;
-    margin-top: 10px;
-}
-
-.status {
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    padding: 25px;
-}
-
-.status h2 {
-    color: #5a6c7d;
-    font-size: 1.3rem;
-    margin-bottom: 15px;
-    font-weight: 600;
-}
-
-#status-output {
-    background-color: #f8f9fa;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 15px;
-    font-family: 'Courier New', monospace;
-    font-size: 12px;
-    height: 200px;
-    max-height: 200px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    color: #666;
-    resize: vertical;
-}
-
-/* Custom scrollbar for status output */
-#status-output::-webkit-scrollbar {
-    width: 8px;
-}
-
-#status-output::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 4px;
-}
-
-#status-output::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
-    border-radius: 4px;
-}
-
-#status-output::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
-}
-
-@media (max-width: 768px) {
-    .container {
-        margin: 10px;
-        padding: 0 10px;
-    }
-    
-    .status-bar {
-        flex-direction: column;
-        gap: 10px;
-    }
-    
-    .mode-buttons {
-        flex-direction: column;
-    }
-    
-    .btn {
-        width: 100%;
-    }
-    
-    .frequency-container {
-        flex-direction: column;
-        align-items: stretch;
-    }
-}
-
-/* Value display for status items */
-.value-display {
-    font-size: 12px;
+.joystick-box {
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    background: #f1f3f5;
+    border: 2px solid #ced4da;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     color: #6c757d;
+    font-weight: 500;
+    user-select: none;
+    transition: 0.2s;
+}
+
+.joystick-box:active {
+    background: #e9ecef;
+    transform: scale(0.98);
+}
+
+/* Live joystick values */
+.joystick-values {
     font-family: monospace;
-    background-color: #f8f9fa;
-    padding: 2px 6px;
+    font-size: 14px;
+    color: #495057;
+    background: #f8f9fa;
+    padding: 8px;
     border-radius: 4px;
     border: 1px solid #e9ecef;
 }
-/* Version info styling */
+
+/* =========================
+   🚨 REPORT BUTTON
+   ========================= */
+
+.btn-danger {
+    width: 100%;
+    margin-top: 15px;
+    background-color: #dc3545;
+    color: white;
+    transition: 0.2s;
+}
+
+.btn-danger:hover {
+    background-color: #c82333;
+}
+
+.btn-danger.active {
+    background-color: #28a745;
+}
+
+/* Status output */
+#status-output {
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    padding: 15px;
+    font-family: monospace;
+    height: 200px;
+    overflow-y: auto;
+}
+
+/* Version */
 .version-info {
     text-align: center;
-    padding: 15px 0;
     color: #6c757d;
     font-size: 11px;
-}
-
-.version-info small {
-    display: inline-block;
-}
-
-.version-info a {
-    color: #007bff;
-    text-decoration: none;
-}
-
-.version-info a:hover {
-    text-decoration: underline;
+    padding: 15px;
 }

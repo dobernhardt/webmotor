@@ -35,7 +35,7 @@ def init_storage_clients():
         return False
     
     try:
-        # Initialize Queue client (using default text encoding for JSON)
+        # Initialize Queue client
         queue_client = QueueClient.from_connection_string(
             STORAGE_CONNECTION_STRING,
             QUEUE_NAME
@@ -79,7 +79,6 @@ def verify_api_key(req: func.HttpRequest) -> bool:
 
 
 def create_error_response(message: str, status_code: int = 400) -> func.HttpResponse:
-    """Create error response"""
     return func.HttpResponse(
         json.dumps({"error": message}),
         status_code=status_code,
@@ -88,7 +87,6 @@ def create_error_response(message: str, status_code: int = 400) -> func.HttpResp
 
 
 def create_success_response(data: dict = None, status_code: int = 200) -> func.HttpResponse:
-    """Create success response"""
     body = data if data else {"status": "ok"}
     return func.HttpResponse(
         json.dumps(body),
@@ -105,31 +103,29 @@ def add_command(req: func.HttpRequest) -> func.HttpResponse:
     """
     logging.info("add_command: Request received")
     
-    # Initialize storage if needed
     if not queue_client:
         if not init_storage_clients():
             return create_error_response("Storage not initialized", 500)
     
-    # Verify API key
     if not verify_api_key(req):
         return create_error_response("Unauthorized", 401)
     
     try:
-        # Parse request body
         req_body = req.get_json()
         
-        # Validate command structure
-        if not req_body or "action" not in req_body:
-            return create_error_response("Missing 'action' field")
+        # ✅ MINIMALE ÄNDERUNG: erweitert für Joystick
+        if not req_body:
+            return create_error_response("Empty body")
+
+        if "action" not in req_body and "joystick" not in req_body:
+            return create_error_response("Missing 'action' or 'joystick'")
         
-        # Add timestamp
         req_body["timestamp"] = datetime.now(timezone.utc).isoformat()
         
-        # Add to queue
         message = json.dumps(req_body)
         queue_client.send_message(message)
         
-        logging.info(f"Command added to queue: {req_body.get('action')}")
+        logging.info(f"Command added to queue: {req_body.get('action') or 'joystick'}")
         return create_success_response({"message": "Command queued"})
         
     except ValueError:
@@ -141,24 +137,16 @@ def add_command(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="commands/poll", methods=["GET"])
 def poll_commands(req: func.HttpRequest) -> func.HttpResponse:
-    """
-    GET /api/commands/poll
-    Long poll for commands (called by controller)
-    Waits up to 30 seconds for a new command
-    """
     logging.info("poll_commands: Request received")
     
-    # Initialize storage if needed
     if not queue_client:
         if not init_storage_clients():
             return create_error_response("Storage not initialized", 500)
     
-    # Verify API key
     if not verify_api_key(req):
         return create_error_response("Unauthorized", 401)
     
     try:
-        # Update last_seen timestamp for device status tracking
         try:
             device_status = {
                 "PartitionKey": "device",
@@ -171,17 +159,13 @@ def poll_commands(req: func.HttpRequest) -> func.HttpResponse:
         
         start_time = time.time()
         
-        # Long polling loop
         while time.time() - start_time < LONG_POLL_TIMEOUT:
-            # Try to get a message
             messages = queue_client.receive_messages(max_messages=1, visibility_timeout=60)
             
             for message in messages:
                 try:
-                    # Parse command
                     command = json.loads(message.content)
                     
-                    # Delete message from queue
                     queue_client.delete_message(message.id, message.pop_receipt)
                     
                     logging.info(f"Command retrieved: {command.get('action')}")
@@ -192,10 +176,8 @@ def poll_commands(req: func.HttpRequest) -> func.HttpResponse:
                     queue_client.delete_message(message.id, message.pop_receipt)
                     continue
             
-            # No message yet, wait a bit before trying again
             time.sleep(1)
         
-        # Timeout reached, no command available
         logging.info("poll_commands: Timeout reached, no commands")
         return create_success_response({"command": None})
         
@@ -206,29 +188,21 @@ def poll_commands(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="state", methods=["POST"])
 def update_state(req: func.HttpRequest) -> func.HttpResponse:
-    """
-    POST /api/state
-    Update motor state (called by controller)
-    """
     logging.info("update_state: Request received")
     
-    # Initialize storage if needed
     if not table_client:
         if not init_storage_clients():
             return create_error_response("Storage not initialized", 500)
     
-    # Verify API key
     if not verify_api_key(req):
         return create_error_response("Unauthorized", 401)
     
     try:
-        # Parse request body
         req_body = req.get_json()
         
         if not req_body:
             return create_error_response("Empty request body")
         
-        # Create entity for table storage
         entity = {
             "PartitionKey": "motor",
             "RowKey": "current",
@@ -236,7 +210,6 @@ def update_state(req: func.HttpRequest) -> func.HttpResponse:
             **req_body
         }
         
-        # Upsert to table (insert or update)
         table_client.upsert_entity(entity, mode=UpdateMode.REPLACE)
         
         logging.info("State updated successfully")
@@ -251,26 +224,18 @@ def update_state(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="state", methods=["GET"])
 def get_state(req: func.HttpRequest) -> func.HttpResponse:
-    """
-    GET /api/state
-    Get current motor state (called by frontend)
-    """
     logging.info("get_state: Request received")
     
-    # Initialize storage if needed
     if not table_client:
         if not init_storage_clients():
             return create_error_response("Storage not initialized", 500)
     
-    # Verify API key
     if not verify_api_key(req):
         return create_error_response("Unauthorized", 401)
     
     try:
-        # Get entity from table storage
         entity = table_client.get_entity(partition_key="motor", row_key="current")
         
-        # Remove Azure Table Storage metadata
         state = {k: v for k, v in entity.items() 
                 if not k.startswith("_") and k not in ["PartitionKey", "RowKey"]}
         
@@ -279,7 +244,6 @@ def get_state(req: func.HttpRequest) -> func.HttpResponse:
         
     except Exception as e:
         if "ResourceNotFound" in str(e):
-            logging.info("No state available yet")
             return create_success_response({"state": None})
         
         logging.error(f"Error getting state: {str(e)}")
@@ -288,23 +252,16 @@ def get_state(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="device/status", methods=["GET"])
 def get_device_status(req: func.HttpRequest) -> func.HttpResponse:
-    """
-    GET /api/device/status
-    Get device online status and last seen timestamp
-    """
     logging.info("get_device_status: Request received")
     
-    # Initialize storage if needed
     if not table_client:
         if not init_storage_clients():
             return create_error_response("Storage not initialized", 500)
     
-    # Verify API key
     if not verify_api_key(req):
         return create_error_response("Unauthorized", 401)
     
     try:
-        # Get device status from table storage
         entity = table_client.get_entity(partition_key="device", row_key="status")
         
         last_seen_str = entity.get("last_seen")
@@ -313,7 +270,6 @@ def get_device_status(req: func.HttpRequest) -> func.HttpResponse:
             now = datetime.now(timezone.utc)
             seconds_ago = (now - last_seen).total_seconds()
             
-            # Consider device online if it polled within last 60 seconds
             is_online = seconds_ago < 60
             
             response_data = {
@@ -328,12 +284,10 @@ def get_device_status(req: func.HttpRequest) -> func.HttpResponse:
                 "seconds_ago": None
             }
         
-        logging.info(f"Device status: {response_data}")
         return create_success_response(response_data)
         
     except Exception as e:
         if "ResourceNotFound" in str(e):
-            logging.info("Device has never connected")
             return create_success_response({
                 "online": False,
                 "last_seen": None,
@@ -346,16 +300,11 @@ def get_device_status(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="health", methods=["GET"])
 def health_check(req: func.HttpRequest) -> func.HttpResponse:
-    """
-    GET /api/health
-    Health check endpoint with version information
-    """
     response_data = {
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
     
-    # Try to load version info
     try:
         version_file = Path(__file__).parent / "version.json"
         if version_file.exists():

@@ -31,7 +31,7 @@
                     <span id="network-info" class="network-info">-</span>
                 </div>
             </div>
-            
+
             <div class="control-group">
                 <label for="microsteps">Microstepping:</label>
                 <select id="microsteps">
@@ -72,25 +72,15 @@
             </div>
         </div>
 
+        <!-- ✅ FIX: Cloud/Backend Config NICHT entfernt, aber sauber ergänzt -->
         <div class="control-card">
-            <h2>WiFi Configuration</h2>
-            
-            <div class="control-group">
-                <label for="ssid">SSID:</label>
-                <input type="text" id="ssid" placeholder="Enter SSID">
-            </div>
+            <h2>Cloud Configuration</h2>
 
             <div class="control-group">
-                <label for="password">Password:</label>
-                <input type="password" id="password" placeholder="Enter Password">
+                <label for="api-base">API Base (optional):</label>
+                <input type="text" id="api-base" placeholder="/api">
             </div>
 
-            <button id="save-wifi" class="btn btn-primary">Save WiFi Config</button>
-        </div>
-
-        <div class="control-card">
-            <h2>☁️ Cloud Configuration</h2>
-            
             <div class="control-group">
                 <label for="cloud-endpoint">Azure Function Endpoint:</label>
                 <input type="text" id="cloud-endpoint" placeholder="https://your-function-app.azurewebsites.net/api">
@@ -111,9 +101,25 @@
             </div>
 
             <div class="control-group">
-                <button id="save-cloud" class="btn btn-primary" style="margin-right: 10px;">Save Cloud Config</button>
+                <button id="save-cloud" class="btn btn-primary">Save Cloud Config</button>
                 <button id="test-cloud" class="btn btn-secondary">Test Connection</button>
             </div>
+        </div>
+
+        <div class="control-card">
+            <h2>WiFi Configuration</h2>
+
+            <div class="control-group">
+                <label for="ssid">SSID:</label>
+                <input type="text" id="ssid" placeholder="Enter SSID">
+            </div>
+
+            <div class="control-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" placeholder="Enter Password">
+            </div>
+
+            <button id="save-wifi" class="btn btn-primary">Save WiFi Config</button>
         </div>
 
         <div class="status">
