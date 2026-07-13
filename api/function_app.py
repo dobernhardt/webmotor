@@ -7,7 +7,6 @@ import azure.functions as func
 import json
 import logging
 import os
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from azure.storage.queue import QueueClient
@@ -20,7 +19,8 @@ STORAGE_CONNECTION_STRING = os.environ.get("STORAGE_CONNECTION_STRING")
 API_KEY = os.environ.get("API_KEY")
 QUEUE_NAME = os.environ.get("QUEUE_NAME", "webmotor-commands")
 TABLE_NAME = os.environ.get("TABLE_NAME", "webmotorstate")
-LONG_POLL_TIMEOUT = 30  # seconds - ESP32 now uses background task, can handle long polls
+# Drive targets older than this are reported but considered stale by the ESP
+DRIVE_TARGET_MAX_AGE_S = 2.0
 
 # Initialize storage clients
 queue_client = None
@@ -95,6 +95,63 @@ def create_success_response(data: dict = None, status_code: int = 200) -> func.H
     )
 
 
+def get_entity_or_none(partition_key: str, row_key: str):
+    """Read a table entity, returning None if it does not exist"""
+    try:
+        return table_client.get_entity(partition_key=partition_key, row_key=row_key)
+    except Exception as e:
+        if "ResourceNotFound" in str(e):
+            return None
+        raise
+
+
+def get_drive_target():
+    """Return the latest drive target as dict with age_s, or None"""
+    entity = get_entity_or_none("drive", "target")
+    if not entity:
+        return None
+
+    age_s = None
+    ts_str = entity.get("ts")
+    if ts_str:
+        ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+        age_s = (datetime.now(timezone.utc) - ts).total_seconds()
+
+    return {
+        "x": entity.get("x", 0.0),
+        "y": entity.get("y", 0.0),
+        "ts": ts_str,
+        "age_s": age_s
+    }
+
+
+def get_drive_config():
+    """Return the drive configuration as dict, or None if never set"""
+    entity = get_entity_or_none("drive", "config")
+    if not entity:
+        return None
+
+    return {
+        "steerLimitDeg": entity.get("steerLimitDeg"),
+        "maxFrequency": entity.get("maxFrequency")
+    }
+
+
+def receive_one_command():
+    """Fetch and delete at most one command from the queue (non-blocking)"""
+    messages = queue_client.receive_messages(max_messages=1, visibility_timeout=60)
+    for message in messages:
+        try:
+            command = json.loads(message.content)
+            queue_client.delete_message(message.id, message.pop_receipt)
+            logging.info(f"Command retrieved: {command.get('action')}")
+            return command
+        except json.JSONDecodeError:
+            logging.error(f"Invalid JSON in queue message: {message.content}")
+            queue_client.delete_message(message.id, message.pop_receipt)
+    return None
+
+
 @app.route(route="commands", methods=["POST"])
 def add_command(req: func.HttpRequest) -> func.HttpResponse:
     """
@@ -112,22 +169,20 @@ def add_command(req: func.HttpRequest) -> func.HttpResponse:
     
     try:
         req_body = req.get_json()
-        
-        # ✅ MINIMALE ÄNDERUNG: erweitert für Joystick
-        if not req_body:
-            return create_error_response("Empty body")
 
-        if "action" not in req_body and "joystick" not in req_body:
-            return create_error_response("Missing 'action' or 'joystick'")
-        
+        # Joystick values do NOT go through the queue (they would pile up
+        # and be executed stale) - they use POST /drive instead.
+        if not req_body or "action" not in req_body:
+            return create_error_response("Missing 'action' in request body")
+
         req_body["timestamp"] = datetime.now(timezone.utc).isoformat()
-        
+
         message = json.dumps(req_body)
         queue_client.send_message(message)
-        
-        logging.info(f"Command added to queue: {req_body.get('action') or 'joystick'}")
+
+        logging.info(f"Command added to queue: {req_body.get('action')}")
         return create_success_response({"message": "Command queued"})
-        
+
     except ValueError:
         return create_error_response("Invalid JSON")
     except Exception as e:
@@ -135,17 +190,22 @@ def add_command(req: func.HttpRequest) -> func.HttpResponse:
         return create_error_response(f"Internal error: {str(e)}", 500)
 
 
-@app.route(route="commands/poll", methods=["GET"])
-def poll_commands(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info("poll_commands: Request received")
-    
-    if not queue_client:
+@app.route(route="sync", methods=["GET"])
+def sync(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    GET /api/sync
+    Single short-poll endpoint for the ESP32. Returns the latest drive
+    target (latest-value semantics), the drive configuration and at most
+    one discrete command from the queue. Answers immediately - the ESP
+    polls this every few hundred milliseconds while driving.
+    """
+    if not queue_client or not table_client:
         if not init_storage_clients():
             return create_error_response("Storage not initialized", 500)
-    
+
     if not verify_api_key(req):
         return create_error_response("Unauthorized", 401)
-    
+
     try:
         try:
             device_status = {
@@ -156,33 +216,138 @@ def poll_commands(req: func.HttpRequest) -> func.HttpResponse:
             table_client.upsert_entity(device_status, mode=UpdateMode.REPLACE)
         except Exception as e:
             logging.warning(f"Could not update device status: {str(e)}")
-        
-        start_time = time.time()
-        
-        while time.time() - start_time < LONG_POLL_TIMEOUT:
-            messages = queue_client.receive_messages(max_messages=1, visibility_timeout=60)
-            
-            for message in messages:
-                try:
-                    command = json.loads(message.content)
-                    
-                    queue_client.delete_message(message.id, message.pop_receipt)
-                    
-                    logging.info(f"Command retrieved: {command.get('action')}")
-                    return create_success_response({"command": command})
-                    
-                except json.JSONDecodeError:
-                    logging.error(f"Invalid JSON in queue message: {message.content}")
-                    queue_client.delete_message(message.id, message.pop_receipt)
-                    continue
-            
-            time.sleep(1)
-        
-        logging.info("poll_commands: Timeout reached, no commands")
-        return create_success_response({"command": None})
-        
+
+        return create_success_response({
+            "drive": get_drive_target(),
+            "config": get_drive_config(),
+            "command": receive_one_command()
+        })
+
     except Exception as e:
-        logging.error(f"Error polling commands: {str(e)}")
+        logging.error(f"Error in sync: {str(e)}")
+        return create_error_response(f"Internal error: {str(e)}", 500)
+
+
+@app.route(route="drive", methods=["POST"])
+def set_drive_target(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    POST /api/drive
+    Store the desired drive state {x, y} (called by frontend at ~10 Hz).
+    Latest-value semantics: each write replaces the previous target, so the
+    ESP always acts on the most recent joystick position.
+    """
+    if not table_client:
+        if not init_storage_clients():
+            return create_error_response("Storage not initialized", 500)
+
+    if not verify_api_key(req):
+        return create_error_response("Unauthorized", 401)
+
+    try:
+        req_body = req.get_json()
+
+        if not req_body or "x" not in req_body or "y" not in req_body:
+            return create_error_response("Missing 'x' or 'y' in request body")
+
+        x = max(-1.0, min(1.0, float(req_body["x"])))
+        y = max(-1.0, min(1.0, float(req_body["y"])))
+
+        entity = {
+            "PartitionKey": "drive",
+            "RowKey": "target",
+            "x": x,
+            "y": y,
+            "ts": datetime.now(timezone.utc).isoformat()
+        }
+        table_client.upsert_entity(entity, mode=UpdateMode.REPLACE)
+
+        return create_success_response({"message": "Drive target updated"})
+
+    except (ValueError, TypeError):
+        return create_error_response("Invalid JSON or non-numeric x/y")
+    except Exception as e:
+        logging.error(f"Error setting drive target: {str(e)}")
+        return create_error_response(f"Internal error: {str(e)}", 500)
+
+
+@app.route(route="drive", methods=["GET"])
+def read_drive_target(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/drive - return the latest drive target (debugging aid)"""
+    if not table_client:
+        if not init_storage_clients():
+            return create_error_response("Storage not initialized", 500)
+
+    if not verify_api_key(req):
+        return create_error_response("Unauthorized", 401)
+
+    try:
+        return create_success_response({"drive": get_drive_target()})
+    except Exception as e:
+        logging.error(f"Error reading drive target: {str(e)}")
+        return create_error_response(f"Internal error: {str(e)}", 500)
+
+
+@app.route(route="drive/config", methods=["GET"])
+def read_drive_config(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/drive/config - return steering limit and max speed"""
+    if not table_client:
+        if not init_storage_clients():
+            return create_error_response("Storage not initialized", 500)
+
+    if not verify_api_key(req):
+        return create_error_response("Unauthorized", 401)
+
+    try:
+        return create_success_response({"config": get_drive_config()})
+    except Exception as e:
+        logging.error(f"Error reading drive config: {str(e)}")
+        return create_error_response(f"Internal error: {str(e)}", 500)
+
+
+@app.route(route="drive/config", methods=["POST"])
+def set_drive_config(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    POST /api/drive/config
+    Store drive configuration {steerLimitDeg, maxFrequency}. The ESP picks
+    up changes via /sync and persists them locally.
+    """
+    if not table_client:
+        if not init_storage_clients():
+            return create_error_response("Storage not initialized", 500)
+
+    if not verify_api_key(req):
+        return create_error_response("Unauthorized", 401)
+
+    try:
+        req_body = req.get_json()
+
+        if not req_body:
+            return create_error_response("Empty request body")
+
+        steer_limit_deg = float(req_body.get("steerLimitDeg", -1))
+        max_frequency = int(req_body.get("maxFrequency", -1))
+
+        if not (0 <= steer_limit_deg <= 180):
+            return create_error_response("steerLimitDeg must be between 0 and 180")
+        if not (20 <= max_frequency <= 1000):
+            return create_error_response("maxFrequency must be between 20 and 1000")
+
+        entity = {
+            "PartitionKey": "drive",
+            "RowKey": "config",
+            "steerLimitDeg": steer_limit_deg,
+            "maxFrequency": max_frequency,
+            "ts": datetime.now(timezone.utc).isoformat()
+        }
+        table_client.upsert_entity(entity, mode=UpdateMode.REPLACE)
+
+        logging.info(f"Drive config updated: limit={steer_limit_deg} deg, maxFreq={max_frequency} Hz")
+        return create_success_response({"message": "Drive config updated"})
+
+    except (ValueError, TypeError):
+        return create_error_response("Invalid JSON or non-numeric values")
+    except Exception as e:
+        logging.error(f"Error setting drive config: {str(e)}")
         return create_error_response(f"Internal error: {str(e)}", 500)
 
 

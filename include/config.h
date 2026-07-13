@@ -10,29 +10,34 @@
 #define WIFI_PASSWORD "your_password"
 #endif
 
-// Pin Assignments - TMC2209 Driver
-#define STEP_PIN 7
-#define DIR_PIN 8
-#define EN_PIN 38
-#define MS1_PIN 5
-#define MS2_PIN 6
+// Pin Assignments - ULN2003 drive motor (Antrieb, 28BYJ-48)
+// ESP32-PICO-KIT V4: avoid GPIO 6-11 and 16/17 (internal flash)
+#define DRIVE_IN1_PIN 25
+#define DRIVE_IN2_PIN 26
+#define DRIVE_IN3_PIN 32
+#define DRIVE_IN4_PIN 33
 
-// Pin Assignments - ULN2003 Driver (for 28BYJ-48 stepper)
-#define ULN2003_IN1_PIN 1
-#define ULN2003_IN2_PIN 2
-#define ULN2003_IN3_PIN 3
-#define ULN2003_IN4_PIN 4
+// Pin Assignments - ULN2003 steering motor (Lenkung, 28BYJ-48)
+#define STEER_IN1_PIN 18
+#define STEER_IN2_PIN 19
+#define STEER_IN3_PIN 21
+#define STEER_IN4_PIN 22
 
-// Motor Control Constants
-#define MAX_FREQUENCY 10000
-#define MIN_FREQUENCY 0
+// Drive Control Constants
+// 28BYJ-48 with half-step sequence: 4096 steps per output shaft revolution
+#define STEPS_PER_REVOLUTION 4096
+// Hard upper bound for the drive step frequency (28BYJ-48 stalls above ~1000 pps)
+#define ABS_MAX_FREQUENCY 1000
+// Below this frequency the drive is treated as stopped
+#define MIN_DRIVE_FREQUENCY 20
+// Fixed step frequency used to move the steering motor to its target
+#define STEER_FREQUENCY 500
+// Drive stops automatically when no joystick update arrives within this window
+#define DRIVE_FAILSAFE_TIMEOUT_MS 2000
 
-// Microstepping Options
-#define MICROSTEPS_1 1
-#define MICROSTEPS_2 2
-#define MICROSTEPS_4 4
-#define MICROSTEPS_8 8
-#define MICROSTEPS_16 16
+// Defaults (overridden by values persisted in NVS)
+#define DEFAULT_STEER_LIMIT_DEG 45.0f
+#define DEFAULT_MAX_FREQUENCY 600
 
 // Other Configuration Constants
 #define AP_SSID "WebMotor-Config"

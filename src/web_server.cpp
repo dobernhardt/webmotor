@@ -2,14 +2,10 @@
 #include <WiFi.h>
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
-#include <FastLED.h>
-#include "abstract_motor_controller.h"
+#include "drive_controller.h"
 #include "wifi_manager.h"
 #include "cloud_client.h"
 #include "version.h"
-
-// Reference to the LED array from main.cpp
-extern CRGB leds[];
 
 namespace {
 constexpr int kHttpPort = 80;
@@ -17,37 +13,32 @@ constexpr int kHttpPort = 80;
 
 WebServerController::WebServerController()
     : server(kHttpPort),
-      motor(nullptr),
+      drive(nullptr),
       wifi(nullptr),
-      cloud(nullptr),
-      cachedState{0, 0, true, MotorMode::STOPPED} {}
+      cloud(nullptr) {}
 
-void WebServerController::begin(AbstractMotorController& motorController, WifiManager& wifiManager, CloudClient& cloudClient) {
+void WebServerController::begin(DriveController& driveController, WifiManager& wifiManager, CloudClient& cloudClient) {
     Serial.println("[WEB] Initializing WebServer...");
-    
+
     // Initialize SPIFFS
     if (!SPIFFS.begin(true)) {
         Serial.println("[WEB] ERROR: SPIFFS mount failed");
         return;
     }
     Serial.println("[WEB] SPIFFS mounted successfully");
-    
-    motor = &motorController;
+
+    drive = &driveController;
     wifi = &wifiManager;
     cloud = &cloudClient;
-    cachedState = motor->getMotorState();
     Serial.println("[WEB] Controllers linked");
 
     Serial.println("[WEB] Registering HTTP routes...");
     registerRoutes();
-    
+
     server.begin();
     Serial.print("[WEB] HTTP server listening on port ");
     Serial.println(kHttpPort);
     Serial.println("[WEB] WebServer initialization complete");
-    
-    // Initial LED update based on current state
-    updateStatusLED();
 }
 
 void WebServerController::handle() {
@@ -56,107 +47,200 @@ void WebServerController::handle() {
 
 void WebServerController::registerRoutes() {
     Serial.println("[WEB] Setting up API endpoints...");
-    
+
     // Version/Info route
-    server.on("/api/info", HTTP_GET, [this]() { 
-        Serial.println("[API] GET /api/info");
-        this->handleInfo(); 
+    server.on("/api/info", HTTP_GET, [this]() {
+        this->handleInfo();
     });
-    
-    // API routes
-    server.on("/api/motor/status", HTTP_GET, [this]() { 
-        Serial.println("[API] GET /api/motor/status");
-        this->handleMotorStatus(); 
+
+    // Drive routes (joystick control)
+    // No per-request logging here: the joystick posts at ~10 Hz
+    server.on("/api/drive", HTTP_POST, [this]() {
+        this->handleDrive();
     });
-    
-    server.on("/api/motor/control", HTTP_POST, [this]() { 
-        Serial.println("[API] POST /api/motor/control");
-        this->handleMotorControl(); 
+
+    server.on("/api/drive/status", HTTP_GET, [this]() {
+        this->handleDriveStatus();
     });
-    
-    server.on("/api/wifi/config", HTTP_POST, [this]() { 
+
+    server.on("/api/drive/config", HTTP_GET, [this]() {
+        this->handleDriveConfigGet();
+    });
+
+    server.on("/api/drive/config", HTTP_POST, [this]() {
+        this->handleDriveConfigPost();
+    });
+
+    server.on("/api/drive/center", HTTP_POST, [this]() {
+        Serial.println("[API] POST /api/drive/center");
+        this->handleDriveCenter();
+    });
+
+    server.on("/api/drive/stop", HTTP_POST, [this]() {
+        Serial.println("[API] POST /api/drive/stop");
+        this->handleDriveStop();
+    });
+
+    // WiFi routes
+    server.on("/api/wifi/config", HTTP_POST, [this]() {
         Serial.println("[API] POST /api/wifi/config");
-        this->handleWiFiConfig(); 
+        this->handleWiFiConfig();
     });
-    
-    server.on("/api/wifi/status", HTTP_GET, [this]() { 
-        Serial.println("[API] GET /api/wifi/status");
-        this->handleWiFiStatus(); 
+
+    server.on("/api/wifi/status", HTTP_GET, [this]() {
+        this->handleWiFiStatus();
     });
-    
+
     // Cloud configuration routes
-    server.on("/api/cloud/config", HTTP_POST, [this]() { 
+    server.on("/api/cloud/config", HTTP_POST, [this]() {
         Serial.println("[API] POST /api/cloud/config");
-        this->handleCloudConfig(); 
+        this->handleCloudConfig();
     });
-    
-    server.on("/api/cloud/status", HTTP_GET, [this]() { 
+
+    server.on("/api/cloud/status", HTTP_GET, [this]() {
         Serial.println("[API] GET /api/cloud/status");
-        this->handleCloudStatus(); 
+        this->handleCloudStatus();
     });
-    
-    server.on("/api/cloud/test", HTTP_GET, [this]() { 
+
+    server.on("/api/cloud/test", HTTP_GET, [this]() {
         Serial.println("[API] GET /api/cloud/test");
-        this->handleCloudTest(); 
+        this->handleCloudTest();
     });
-    
+
     // Static file routes
-    server.on("/", [this]() { 
-        Serial.println("[WEB] Serving index.html");
+    server.on("/", [this]() {
         this->serveFile("/index.html", "text/html");
     });
-    
-    server.on("/app.js", [this]() { 
-        Serial.println("[WEB] Serving app.js");
+
+    server.on("/app.js", [this]() {
         this->serveFile("/app.js", "application/javascript");
     });
-    
-    server.on("/styles.css", [this]() { 
-        Serial.println("[WEB] Serving styles.css");
+
+    server.on("/styles.css", [this]() {
         this->serveFile("/styles.css", "text/css");
     });
-    
+
     // Catch-all for 404
     server.onNotFound([this]() {
         Serial.print("[WEB] 404 - File not found: ");
         Serial.println(server.uri());
         server.send(404, "text/plain", "File not found");
     });
-    
+
     Serial.println("[WEB] Routes registered successfully");
 }
 
-void WebServerController::handleMotorStatus() {
-    Serial.println("[API] Processing motor status request");
-    
-    if (motor != nullptr) {
-        cachedState = motor->getMotorState();
+void WebServerController::handleDrive() {
+    if (drive == nullptr) {
+        sendJson(500, "{\"error\":\"Drive controller unavailable\"}");
+        return;
+    }
+
+    if (!server.hasArg("plain")) {
+        sendJson(400, "{\"error\":\"No data received\"}");
+        return;
     }
 
     JsonDocument doc;
-    doc["microsteps"] = cachedState.microsteps;
-    doc["frequency"] = cachedState.frequency;
-    doc["direction"] = cachedState.direction;
-    
-    const char* modeStr;
-    switch(cachedState.mode) {
-        case MotorMode::RUNNING: modeStr = "running"; break;
-        case MotorMode::STOPPED: modeStr = "stopped"; break;
-        default: modeStr = "released"; break;
+    DeserializationError error = deserializeJson(doc, server.arg("plain"));
+    if (error || doc["x"].isNull() || doc["y"].isNull()) {
+        sendJson(400, "{\"error\":\"Expected JSON with x and y\"}");
+        return;
     }
-    doc["mode"] = modeStr;
+
+    drive->setTarget(doc["x"].as<float>(), doc["y"].as<float>());
+    server.send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
+void WebServerController::handleDriveStatus() {
+    if (drive == nullptr) {
+        sendJson(500, "{\"error\":\"Drive controller unavailable\"}");
+        return;
+    }
+
+    const DriveStatus status = drive->getStatus();
+
+    JsonDocument doc;
+    doc["x"] = status.x;
+    doc["y"] = status.y;
+    doc["steeringDeg"] = status.steeringDeg;
+    doc["steerLimitDeg"] = status.steerLimitDeg;
+    doc["maxFrequency"] = status.maxFrequency;
+    doc["driving"] = status.driving;
+    doc["failsafe"] = status.failsafe;
 
     String jsonResponse;
     serializeJson(doc, jsonResponse);
-    
-    Serial.print("[API] Sending motor status: ");
-    Serial.println(jsonResponse);
-    
-    sendJson(200, jsonResponse);
+    server.send(200, "application/json", jsonResponse);
 }
-void WebServerController::handleInfo() {
-    Serial.println("[API] Processing info request");
 
+void WebServerController::handleDriveConfigGet() {
+    if (drive == nullptr) {
+        sendJson(500, "{\"error\":\"Drive controller unavailable\"}");
+        return;
+    }
+
+    JsonDocument doc;
+    doc["steerLimitDeg"] = drive->getSteerLimitDeg();
+    doc["maxFrequency"] = drive->getMaxFrequency();
+
+    String jsonResponse;
+    serializeJson(doc, jsonResponse);
+    server.send(200, "application/json", jsonResponse);
+}
+
+void WebServerController::handleDriveConfigPost() {
+    Serial.println("[API] POST /api/drive/config");
+
+    if (drive == nullptr) {
+        sendJson(500, "{\"error\":\"Drive controller unavailable\"}");
+        return;
+    }
+
+    if (!server.hasArg("plain")) {
+        sendJson(400, "{\"error\":\"No data received\"}");
+        return;
+    }
+
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, server.arg("plain"));
+    if (error) {
+        sendJson(400, "{\"error\":\"Invalid JSON\"}");
+        return;
+    }
+
+    const float steerLimitDeg = doc["steerLimitDeg"] | drive->getSteerLimitDeg();
+    const uint32_t maxFrequency = doc["maxFrequency"] | drive->getMaxFrequency();
+
+    if (!drive->setConfig(steerLimitDeg, maxFrequency)) {
+        sendJson(400, "{\"error\":\"Invalid configuration values\"}");
+        return;
+    }
+
+    sendJson(200, "{\"status\":\"configuration saved\"}");
+}
+
+void WebServerController::handleDriveCenter() {
+    if (drive == nullptr) {
+        sendJson(500, "{\"error\":\"Drive controller unavailable\"}");
+        return;
+    }
+
+    drive->centerSteering();
+    sendJson(200, "{\"status\":\"steering centered\"}");
+}
+
+void WebServerController::handleDriveStop() {
+    if (drive == nullptr) {
+        sendJson(500, "{\"error\":\"Drive controller unavailable\"}");
+        return;
+    }
+
+    drive->stop();
+    sendJson(200, "{\"status\":\"stopped\"}");
+}
+
+void WebServerController::handleInfo() {
     JsonDocument doc;
     doc["version"] = VERSION_SEMVER;
     doc["fullVersion"] = VERSION_FULL;
@@ -164,127 +248,17 @@ void WebServerController::handleInfo() {
     doc["commit"] = VERSION_SHORT_SHA;
     doc["commitFull"] = VERSION_SHA;
     doc["buildTimestamp"] = VERSION_BUILD_TIMESTAMP;
-    doc["platform"] = "ESP32-S3";
-    doc["board"] = "ATOM S3 LITE";
+    doc["platform"] = "ESP32";
+    doc["board"] = "ESP32-PICO-KIT V4";
 
     String jsonResponse;
     serializeJson(doc, jsonResponse);
-    
-    Serial.print("[API] Sending version info: ");
-    Serial.println(jsonResponse);
-    
-    sendJson(200, jsonResponse);
-}
-namespace {
-MotorMode parseMode(const JsonVariant& value, MotorMode fallback) {
-    if (value.is<int>()) {
-        const int val = value.as<int>();
-        switch (val) {
-            case STOPPED:
-            case RUNNING:
-            case RELEASED:
-                return static_cast<MotorMode>(val);
-            default:
-                return fallback;
-        }
-    }
-
-    if (value.is<const char*>()) {
-        const String modeStr = value.as<const char*>();
-        if (modeStr.equalsIgnoreCase("STOPPED")) {
-            return MotorMode::STOPPED;
-        }
-        if (modeStr.equalsIgnoreCase("RUNNING")) {
-            return MotorMode::RUNNING;
-        }
-        if (modeStr.equalsIgnoreCase("RELEASED")) {
-            return MotorMode::RELEASED;
-        }
-    }
-
-    return fallback;
-}
-}
-
-void WebServerController::handleMotorControl() {
-    Serial.println("[API] Processing motor control request");
-    
-    if (!server.hasArg("plain")) {
-        Serial.println("[API] ERROR: No JSON payload");
-        sendJson(400, "{\"error\":\"No data received\"}");
-        return;
-    }
-
-    String body = server.arg("plain");
-    Serial.print("[API] Request payload: ");
-    Serial.println(body);
-
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, body);
-
-    if (error) {
-        Serial.print("[API] ERROR: JSON parse failed - ");
-        Serial.println(error.c_str());
-        sendJson(400, "{\"error\":\"Invalid JSON\"}");
-        return;
-    }
-
-    if (motor == nullptr) {
-        Serial.println("[API] ERROR: Motor controller unavailable");
-        sendJson(500, "{\"error\":\"Motor controller unavailable\"}");
-        return;
-    }
-
-    if (!doc["microsteps"].isNull()) {
-        uint16_t microsteps = doc["microsteps"].as<uint16_t>();
-        Serial.print("[MOTOR] Setting microsteps: ");
-        Serial.println(microsteps);
-        motor->setMicrostepMode(microsteps);
-    }
-    if (!doc["frequency"].isNull()) {
-        uint32_t frequency = doc["frequency"].as<uint32_t>();
-        Serial.print("[MOTOR] Setting frequency: ");
-        Serial.print(frequency);
-        Serial.println(" Hz");
-        motor->setFrequency(frequency);
-    }
-    if (!doc["direction"].isNull()) {
-        bool direction = doc["direction"].as<bool>();
-        Serial.print("[MOTOR] Setting direction: ");
-        Serial.println(direction ? "CW" : "CCW");
-        motor->setDirection(direction);
-    }
-    if (!doc["mode"].isNull()) {
-        const MotorMode mode = parseMode(doc["mode"], motor->getMotorState().mode);
-        Serial.print("[MOTOR] Setting mode: ");
-        Serial.println((int)mode);
-        
-        // Use abstract interface methods instead of setMode
-        switch (mode) {
-            case MotorMode::RUNNING:
-                motor->start();
-                break;
-            case MotorMode::STOPPED:
-                motor->stop();
-                break;
-            case MotorMode::RELEASED:
-                motor->release();
-                break;
-        }
-    }
-
-    cachedState = motor->getMotorState();
-    Serial.println("[API] Motor control completed successfully");
-    
-    // Update LED to reflect new motor state
-    updateStatusLED();
-    
-    sendJson(200, "{\"status\":\"updated\"}");
+    server.send(200, "application/json", jsonResponse);
 }
 
 void WebServerController::handleWiFiConfig() {
     Serial.println("[API] Processing WiFi config request");
-    
+
     if (!server.hasArg("plain")) {
         Serial.println("[API] ERROR: No JSON payload for WiFi config");
         sendJson(400, "{\"error\":\"No data received\"}");
@@ -298,8 +272,6 @@ void WebServerController::handleWiFiConfig() {
     }
 
     String body = server.arg("plain");
-    Serial.print("[API] WiFi config payload: ");
-    Serial.println(body);
 
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, body);
@@ -316,26 +288,19 @@ void WebServerController::handleWiFiConfig() {
 
     const String ssid = doc["ssid"].as<String>();
     const String password = doc["password"].as<String>();
-    
+
     Serial.print("[WIFI] Saving credentials for SSID: ");
     Serial.println(ssid);
     // Note: Password not logged for security
-    
+
     wifi->saveCredentials(ssid, password);
-    
+
     Serial.println("[WIFI] Credentials saved successfully");
-    
-    // Update LED to indicate configuration change
-    updateStatusLED();
-    
     sendJson(200, "{\"status\":\"credentials saved\"}");
 }
 
 void WebServerController::handleWiFiStatus() {
-    Serial.println("[API] Processing WiFi status request");
-    
     if (wifi == nullptr) {
-        Serial.println("[API] ERROR: Wi-Fi manager unavailable");
         sendJson(500, "{\"error\":\"Wi-Fi manager unavailable\"}");
         return;
     }
@@ -343,7 +308,7 @@ void WebServerController::handleWiFiStatus() {
     JsonDocument doc;
     doc["isAccessPoint"] = wifi->isAccessPoint();
     doc["isConnected"] = wifi->isConnected();
-    
+
     if (!wifi->isAccessPoint() && wifi->isConnected()) {
         doc["ssid"] = wifi->getSSID();
         doc["ipAddress"] = WiFi.localIP().toString();
@@ -357,11 +322,7 @@ void WebServerController::handleWiFiStatus() {
 
     String jsonResponse;
     serializeJson(doc, jsonResponse);
-    
-    Serial.print("[API] Sending WiFi status: ");
-    Serial.println(jsonResponse);
-    
-    sendJson(200, jsonResponse);
+    server.send(200, "application/json", jsonResponse);
 }
 
 void WebServerController::sendJson(int statusCode, const String& payload) {
@@ -369,7 +330,7 @@ void WebServerController::sendJson(int statusCode, const String& payload) {
     Serial.print(statusCode);
     Serial.print(": ");
     Serial.println(payload);
-    
+
     server.send(statusCode, "application/json", payload);
 }
 
@@ -382,41 +343,21 @@ void WebServerController::serveFile(const String& path, const String& contentTyp
             Serial.print(" (");
             Serial.print(file.size());
             Serial.println(" bytes)");
-            
+
             server.streamFile(file, contentType);
             file.close();
             return;
         }
     }
-    
+
     Serial.print("[WEB] ERROR: File not found - ");
     Serial.println(path);
     server.send(404, "text/plain", "File not found");
 }
 
-void WebServerController::updateStatusLED() {
-    if (!motor || !wifi) return;
-    
-    // This method provides immediate LED feedback for web API calls
-    // The main loop handles the continuous LED state management
-    
-    Serial.println("[LED] Updating status LED from web server");
-    
-    // Brief visual confirmation of web API interaction
-    // Flash white briefly to indicate web command received
-    leds[0] = CRGB::White;
-    FastLED.show();
-    delay(50);  // Very brief flash
-    leds[0] = CRGB::Black;
-    FastLED.show();
-    delay(50);
-    
-    // The main loop will update to the appropriate state based on current system status
-}
-
 void WebServerController::handleCloudConfig() {
     Serial.println("[API] Processing cloud config request");
-    
+
     if (!server.hasArg("plain")) {
         Serial.println("[API] ERROR: No JSON payload for cloud config");
         sendJson(400, "{\"error\":\"No data received\"}");
@@ -430,8 +371,6 @@ void WebServerController::handleCloudConfig() {
     }
 
     String body = server.arg("plain");
-    Serial.print("[API] Cloud config payload: ");
-    Serial.println(body);
 
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, body);
@@ -445,14 +384,14 @@ void WebServerController::handleCloudConfig() {
     String apiEndpoint = doc["apiEndpoint"] | "";
     String apiKey = doc["apiKey"] | "";
     bool enabled = doc["enabled"] | false;
-    
+
     Serial.print("[CLOUD] Saving configuration - Endpoint: ");
     Serial.println(apiEndpoint);
     Serial.print("[CLOUD] API Key provided: ");
     Serial.println(apiKey.isEmpty() ? "false (keeping existing)" : "true");
     Serial.print("[CLOUD] Enabled: ");
     Serial.println(enabled ? "true" : "false");
-    
+
     // If API key is empty, keep the existing one
     if (apiKey.isEmpty()) {
         String currentEndpoint, currentKey;
@@ -461,7 +400,7 @@ void WebServerController::handleCloudConfig() {
         apiKey = currentKey;
         Serial.println("[CLOUD] Using existing API key");
     }
-    
+
     if (cloud->setConfig(apiEndpoint, apiKey, enabled)) {
         Serial.println("[CLOUD] Configuration saved successfully");
         sendJson(200, "{\"status\":\"configuration saved\"}");
@@ -473,7 +412,7 @@ void WebServerController::handleCloudConfig() {
 
 void WebServerController::handleCloudStatus() {
     Serial.println("[API] Processing cloud status request");
-    
+
     if (cloud == nullptr) {
         Serial.println("[API] ERROR: Cloud client unavailable");
         sendJson(500, "{\"error\":\"Cloud client unavailable\"}");
@@ -492,16 +431,13 @@ void WebServerController::handleCloudStatus() {
 
     String jsonResponse;
     serializeJson(doc, jsonResponse);
-    
-    Serial.print("[API] Sending cloud status: ");
-    Serial.println(jsonResponse);
-    
+
     sendJson(200, jsonResponse);
 }
 
 void WebServerController::handleCloudTest() {
     Serial.println("[API] Processing cloud test request");
-    
+
     if (cloud == nullptr) {
         Serial.println("[API] ERROR: Cloud client unavailable");
         sendJson(500, "{\"error\":\"Cloud client unavailable\"}");
@@ -516,9 +452,6 @@ void WebServerController::handleCloudTest() {
 
     String jsonResponse;
     serializeJson(doc, jsonResponse);
-    
-    Serial.print("[API] Cloud test result: ");
-    Serial.println(jsonResponse);
-    
+
     sendJson(200, jsonResponse);
 }
