@@ -15,6 +15,18 @@ MotorControllerULN2003 tiltMotor(TILT_IN1_PIN, TILT_IN2_PIN, TILT_IN3_PIN, TILT_
 PlatformController platformController(rotationMotor, tiltMotor);
 CloudClient cloudClient;
 
+// One-line status dump for debugging; printed whenever a new value arrives
+// from the cloud (joystick target, limits, command)
+void printPlatformStatus(const char* trigger) {
+    PlatformStatus s = platformController.getStatus();
+    Serial.printf("[STATUS %8lu ms] %-12s | joy x=%+.2f y=%+.2f | rotation %+7.1f -> %+7.1f deg (limit %.0f) | tilt %+6.1f -> %+6.1f deg (limit %.0f) | %s\n",
+                  millis(), trigger,
+                  s.x, s.y,
+                  s.rotationDeg, s.x * s.rotationLimitDeg, s.rotationLimitDeg,
+                  s.tiltDeg, s.y * s.tiltLimitDeg, s.tiltLimitDeg,
+                  s.moving ? "MOVING" : "idle");
+}
+
 void processCloudCommand(const String& commandJson) {
     Serial.print("[CLOUD] Processing command: ");
     Serial.println(commandJson);
@@ -81,6 +93,7 @@ void loop() {
     float x, y;
     if (cloudClient.getTarget(x, y)) {
         platformController.setTarget(x, y);
+        printPlatformStatus("cloud target");
     }
 
     // Apply axis limits changed in the cloud frontend (WebUI owns them)
@@ -88,11 +101,13 @@ void loop() {
     if (cloudClient.getLimitsUpdate(rotationLimitDeg, tiltLimitDeg)) {
         Serial.println("[CLOUD] Applying axis limits from cloud");
         platformController.setLimits(rotationLimitDeg, tiltLimitDeg);
+        printPlatformStatus("cloud limits");
     }
 
     // Process discrete cloud commands (stop, center)
     if (cloudClient.hasCommand()) {
         processCloudCommand(cloudClient.getCommand());
+        printPlatformStatus("cloud command");
     }
 
     // Keep the cloud updated with the current platform status
