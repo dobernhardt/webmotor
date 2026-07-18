@@ -1,7 +1,6 @@
 #include "web_server.h"
 #include <WiFi.h>
 #include <ArduinoJson.h>
-#include <SPIFFS.h>
 #include "platform_controller.h"
 #include "wifi_manager.h"
 #include "cloud_client.h"
@@ -10,8 +9,8 @@
 namespace {
 constexpr int kHttpPort = 80;
 
-// WLAN setup page for AP mode, embedded in the firmware so it works
-// without a SPIFFS image. Shown automatically as a captive portal.
+// WLAN setup page for AP mode, embedded in the firmware.
+// Shown automatically as a captive portal.
 const char kPortalPage[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -200,13 +199,6 @@ WebServerController::WebServerController()
 void WebServerController::begin(PlatformController& platformController, WifiManager& wifiManager, CloudClient& cloudClient) {
     Serial.println("[WEB] Initializing WebServer...");
 
-    // Initialize SPIFFS
-    if (!SPIFFS.begin(true)) {
-        Serial.println("[WEB] ERROR: SPIFFS mount failed");
-        return;
-    }
-    Serial.println("[WEB] SPIFFS mounted successfully");
-
     platform = &platformController;
     wifi = &wifiManager;
     cloud = &cloudClient;
@@ -300,14 +292,6 @@ void WebServerController::registerRoutes() {
             return;
         }
         this->serveStatusPage();
-    });
-
-    server.on("/app.js", [this]() {
-        this->serveFile("/app.js", "application/javascript");
-    });
-
-    server.on("/styles.css", [this]() {
-        this->serveFile("/styles.css", "text/css");
     });
 
     // Catch-all for 404
@@ -560,27 +544,6 @@ void WebServerController::sendJson(int statusCode, const String& payload) {
     Serial.println(payload);
 
     server.send(statusCode, "application/json", payload);
-}
-
-void WebServerController::serveFile(const String& path, const String& contentType) {
-    if (SPIFFS.exists(path)) {
-        File file = SPIFFS.open(path, "r");
-        if (file) {
-            Serial.print("[WEB] Serving file: ");
-            Serial.print(path);
-            Serial.print(" (");
-            Serial.print(file.size());
-            Serial.println(" bytes)");
-
-            server.streamFile(file, contentType);
-            file.close();
-            return;
-        }
-    }
-
-    Serial.print("[WEB] ERROR: File not found - ");
-    Serial.println(path);
-    server.send(404, "text/plain", "File not found");
 }
 
 void WebServerController::handleCloudConfig() {

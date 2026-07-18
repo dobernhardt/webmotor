@@ -37,7 +37,6 @@ private:
     void handleCloudTest();
     void handleInfo();
     void sendJson(int statusCode, const String& payload);
-    void serveFile(const String& path, const String& contentType);
 };
 
 #endif // WEB_SERVER_H
