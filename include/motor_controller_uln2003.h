@@ -8,7 +8,7 @@
  *
  * Lean, task-free driver: it only knows how to advance the half-step
  * sequence and track its signed step position. Timing (when to step)
- * is owned by the caller (see DriveController).
+ * is owned by the caller (see PlatformController).
  *
  * Half-step sequence -> 4096 steps per output shaft revolution.
  */

@@ -13,19 +13,19 @@ constexpr int SYNC_HTTP_TIMEOUT_MS = 5000;  // sync endpoint answers immediately
 
 CloudClient::CloudClient()
     : enabled_(false),
-      currentStatus_{0.0f, 0.0f, 0.0f, 0.0f, 0, false, false},
+      currentStatus_{},
       lastStatePush_(0),
-      hasDriveTarget_(false),
-      driveX_(0.0f),
-      driveY_(0.0f),
-      hasConfigUpdate_(false),
-      cloudSteerLimitDeg_(0.0f),
-      cloudMaxFrequency_(0),
-      cloudConfigSeen_(false),
-      lastSeenSteerLimitDeg_(0.0f),
-      lastSeenMaxFrequency_(0),
+      hasTarget_(false),
+      targetX_(0.0f),
+      targetY_(0.0f),
+      hasLimitsUpdate_(false),
+      cloudRotationLimitDeg_(0.0f),
+      cloudTiltLimitDeg_(0.0f),
+      cloudLimitsSeen_(false),
+      lastSeenRotationLimitDeg_(0.0f),
+      lastSeenTiltLimitDeg_(0.0f),
       hasPendingCommand_(false),
-      driveActive_(false),
+      targetActive_(false),
       syncTaskHandle_(nullptr),
       syncTaskRunning_(false) {
     syncMutex_ = xSemaphoreCreateMutex();
@@ -125,21 +125,21 @@ bool CloudClient::testConnection() {
     }
 }
 
-void CloudClient::setDriveStatus(const DriveStatus& status) {
+void CloudClient::setStatus(const PlatformStatus& status) {
     currentStatus_ = status;
 }
 
-bool CloudClient::getDriveTarget(float& x, float& y) {
-    if (!hasDriveTarget_) {
+bool CloudClient::getTarget(float& x, float& y) {
+    if (!hasTarget_) {
         return false;
     }
 
     bool result = false;
     if (xSemaphoreTake(syncMutex_, pdMS_TO_TICKS(50)) == pdTRUE) {
-        if (hasDriveTarget_) {
-            x = driveX_;
-            y = driveY_;
-            hasDriveTarget_ = false;
+        if (hasTarget_) {
+            x = targetX_;
+            y = targetY_;
+            hasTarget_ = false;
             result = true;
         }
         xSemaphoreGive(syncMutex_);
@@ -147,17 +147,17 @@ bool CloudClient::getDriveTarget(float& x, float& y) {
     return result;
 }
 
-bool CloudClient::getDriveConfigUpdate(float& steerLimitDeg, uint32_t& maxFrequency) {
-    if (!hasConfigUpdate_) {
+bool CloudClient::getLimitsUpdate(float& rotationLimitDeg, float& tiltLimitDeg) {
+    if (!hasLimitsUpdate_) {
         return false;
     }
 
     bool result = false;
     if (xSemaphoreTake(syncMutex_, pdMS_TO_TICKS(50)) == pdTRUE) {
-        if (hasConfigUpdate_) {
-            steerLimitDeg = cloudSteerLimitDeg_;
-            maxFrequency = cloudMaxFrequency_;
-            hasConfigUpdate_ = false;
+        if (hasLimitsUpdate_) {
+            rotationLimitDeg = cloudRotationLimitDeg_;
+            tiltLimitDeg = cloudTiltLimitDeg_;
+            hasLimitsUpdate_ = false;
             result = true;
         }
         xSemaphoreGive(syncMutex_);
@@ -216,11 +216,11 @@ void CloudClient::pushState() {
     JsonDocument doc;
     doc["x"] = currentStatus_.x;
     doc["y"] = currentStatus_.y;
-    doc["steeringDeg"] = currentStatus_.steeringDeg;
-    doc["steerLimitDeg"] = currentStatus_.steerLimitDeg;
-    doc["maxFrequency"] = currentStatus_.maxFrequency;
-    doc["driving"] = currentStatus_.driving;
-    doc["failsafe"] = currentStatus_.failsafe;
+    doc["rotationDeg"] = currentStatus_.rotationDeg;
+    doc["tiltDeg"] = currentStatus_.tiltDeg;
+    doc["rotationLimitDeg"] = currentStatus_.rotationLimitDeg;
+    doc["tiltLimitDeg"] = currentStatus_.tiltLimitDeg;
+    doc["moving"] = currentStatus_.moving;
 
     String payload;
     serializeJson(doc, payload);
@@ -271,36 +271,36 @@ void CloudClient::syncOnce() {
     }
 
     // Latest joystick target - only accept fresh values so a vanished
-    // frontend cannot keep the robot driving
+    // frontend cannot keep moving the platform
     if (!doc["drive"].isNull()) {
         float ageS = doc["drive"]["age_s"] | 1e9f;
-        driveActive_ = (ageS < 30.0f);
-        if (ageS <= DRIVE_TARGET_MAX_AGE_S) {
-            driveX_ = doc["drive"]["x"] | 0.0f;
-            driveY_ = doc["drive"]["y"] | 0.0f;
-            hasDriveTarget_ = true;
+        targetActive_ = (ageS < 30.0f);
+        if (ageS <= TARGET_MAX_AGE_S) {
+            targetX_ = doc["drive"]["x"] | 0.0f;
+            targetY_ = doc["drive"]["y"] | 0.0f;
+            hasTarget_ = true;
         }
     } else {
-        driveActive_ = false;
+        targetActive_ = false;
     }
 
-    // Drive configuration - only report when the cloud value changes,
+    // Axis limits - only report when the cloud value changes,
     // so local (test interface) changes are not constantly overwritten
     if (!doc["config"].isNull()) {
-        float steerLimitDeg = doc["config"]["steerLimitDeg"] | -1.0f;
-        uint32_t maxFrequency = doc["config"]["maxFrequency"] | (uint32_t)0;
-        if (steerLimitDeg >= 0.0f && maxFrequency > 0) {
-            const bool changed = !cloudConfigSeen_ ||
-                                 steerLimitDeg != lastSeenSteerLimitDeg_ ||
-                                 maxFrequency != lastSeenMaxFrequency_;
+        float rotationLimitDeg = doc["config"]["rotationLimitDeg"] | -1.0f;
+        float tiltLimitDeg = doc["config"]["tiltLimitDeg"] | -1.0f;
+        if (rotationLimitDeg >= 0.0f && tiltLimitDeg >= 0.0f) {
+            const bool changed = !cloudLimitsSeen_ ||
+                                 rotationLimitDeg != lastSeenRotationLimitDeg_ ||
+                                 tiltLimitDeg != lastSeenTiltLimitDeg_;
             if (changed) {
-                cloudSteerLimitDeg_ = steerLimitDeg;
-                cloudMaxFrequency_ = maxFrequency;
-                hasConfigUpdate_ = true;
+                cloudRotationLimitDeg_ = rotationLimitDeg;
+                cloudTiltLimitDeg_ = tiltLimitDeg;
+                hasLimitsUpdate_ = true;
             }
-            lastSeenSteerLimitDeg_ = steerLimitDeg;
-            lastSeenMaxFrequency_ = maxFrequency;
-            cloudConfigSeen_ = true;
+            lastSeenRotationLimitDeg_ = rotationLimitDeg;
+            lastSeenTiltLimitDeg_ = tiltLimitDeg;
+            cloudLimitsSeen_ = true;
         }
     }
 
@@ -401,8 +401,8 @@ void CloudClient::syncTaskFunction(void* parameter) {
 
         client->syncOnce();
 
-        // Poll fast while someone is driving, relax when idle
-        const unsigned long interval = client->driveActive_
+        // Poll fast while someone is steering, relax when idle
+        const unsigned long interval = client->targetActive_
             ? SYNC_INTERVAL_ACTIVE_MS
             : SYNC_INTERVAL_IDLE_MS;
         vTaskDelay(pdMS_TO_TICKS(interval));

@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <DNSServer.h>
 #include <Preferences.h>
 
 class WifiManager {
@@ -17,15 +18,19 @@ public:
 
 private:
     Preferences preferences;
+    DNSServer dnsServer;
     String storedSSID;
     String storedPassword;
     bool apModeActive;
+    bool reconnectPending;
+    unsigned long reconnectRequestedAt;
     unsigned long lastReconnectAttempt;
 
     void loadCredentials();
     bool credentialsAvailable() const;
     void connectToWiFi();
     void startAccessPoint();
+    void stopAccessPoint();
 };
 
 #endif // WIFI_MANAGER_H

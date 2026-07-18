@@ -126,14 +126,14 @@ def get_drive_target():
 
 
 def get_drive_config():
-    """Return the drive configuration as dict, or None if never set"""
+    """Return the axis limit configuration as dict, or None if never set"""
     entity = get_entity_or_none("drive", "config")
     if not entity:
         return None
 
     return {
-        "steerLimitDeg": entity.get("steerLimitDeg"),
-        "maxFrequency": entity.get("maxFrequency")
+        "rotationLimitDeg": entity.get("rotationLimitDeg"),
+        "tiltLimitDeg": entity.get("tiltLimitDeg")
     }
 
 
@@ -289,7 +289,7 @@ def read_drive_target(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="drive/config", methods=["GET"])
 def read_drive_config(req: func.HttpRequest) -> func.HttpResponse:
-    """GET /api/drive/config - return steering limit and max speed"""
+    """GET /api/drive/config - return the axis limits"""
     if not table_client:
         if not init_storage_clients():
             return create_error_response("Storage not initialized", 500)
@@ -308,8 +308,9 @@ def read_drive_config(req: func.HttpRequest) -> func.HttpResponse:
 def set_drive_config(req: func.HttpRequest) -> func.HttpResponse:
     """
     POST /api/drive/config
-    Store drive configuration {steerLimitDeg, maxFrequency}. The ESP picks
-    up changes via /sync and persists them locally.
+    Store the axis limits {rotationLimitDeg, tiltLimitDeg}. The WebUI owns
+    these values; the ESP picks up changes via /sync and applies them
+    without persisting (they are re-applied after every boot).
     """
     if not table_client:
         if not init_storage_clients():
@@ -324,25 +325,25 @@ def set_drive_config(req: func.HttpRequest) -> func.HttpResponse:
         if not req_body:
             return create_error_response("Empty request body")
 
-        steer_limit_deg = float(req_body.get("steerLimitDeg", -1))
-        max_frequency = int(req_body.get("maxFrequency", -1))
+        rotation_limit_deg = float(req_body.get("rotationLimitDeg", -1))
+        tilt_limit_deg = float(req_body.get("tiltLimitDeg", -1))
 
-        if not (0 <= steer_limit_deg <= 180):
-            return create_error_response("steerLimitDeg must be between 0 and 180")
-        if not (20 <= max_frequency <= 1000):
-            return create_error_response("maxFrequency must be between 20 and 1000")
+        if not (0 <= rotation_limit_deg <= 180):
+            return create_error_response("rotationLimitDeg must be between 0 and 180")
+        if not (0 <= tilt_limit_deg <= 90):
+            return create_error_response("tiltLimitDeg must be between 0 and 90")
 
         entity = {
             "PartitionKey": "drive",
             "RowKey": "config",
-            "steerLimitDeg": steer_limit_deg,
-            "maxFrequency": max_frequency,
+            "rotationLimitDeg": rotation_limit_deg,
+            "tiltLimitDeg": tilt_limit_deg,
             "ts": datetime.now(timezone.utc).isoformat()
         }
         table_client.upsert_entity(entity, mode=UpdateMode.REPLACE)
 
-        logging.info(f"Drive config updated: limit={steer_limit_deg} deg, maxFreq={max_frequency} Hz")
-        return create_success_response({"message": "Drive config updated"})
+        logging.info(f"Axis limits updated: rotation={rotation_limit_deg} deg, tilt={tilt_limit_deg} deg")
+        return create_success_response({"message": "Axis limits updated"})
 
     except (ValueError, TypeError):
         return create_error_response("Invalid JSON or non-numeric values")

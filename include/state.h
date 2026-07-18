@@ -3,14 +3,14 @@
 
 #include <Arduino.h>
 
-struct DriveStatus {
-    float x;                // last joystick x [-1..1] (steering)
-    float y;                // last joystick y [-1..1] (throttle)
-    float steeringDeg;      // current steering angle relative to center
-    float steerLimitDeg;    // configured steering limit
-    uint32_t maxFrequency;  // configured max drive step frequency (Hz)
-    bool driving;           // drive motor currently stepping
-    bool failsafe;          // drive stopped because joystick updates timed out
+struct PlatformStatus {
+    float x = 0.0f;                 // last joystick x [-1..1] (rotation target)
+    float y = 0.0f;                 // last joystick y [-1..1] (tilt target)
+    float rotationDeg = 0.0f;       // current rotation around z, relative to center
+    float tiltDeg = 0.0f;           // current tilt around x, relative to center
+    float rotationLimitDeg = 0.0f;  // configured rotation limit
+    float tiltLimitDeg = 0.0f;      // configured tilt limit
+    bool moving = false;            // at least one axis still traveling to its target
 };
 
 #endif // STATE_H

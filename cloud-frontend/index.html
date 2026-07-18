@@ -35,12 +35,16 @@
                     <span id="device-status" class="status-indicator disconnected">Unknown</span>
                 </div>
                 <div class="status-item">
-                    <span class="status-label">Y-Achse:</span>
-                    <span id="drive-status" class="motor-status unknown">-</span>
+                    <span class="status-label">Drehung (Z):</span>
+                    <span id="rotation-value" class="value-display">-</span>
                 </div>
                 <div class="status-item">
-                    <span class="status-label">X-Achse:</span>
-                    <span id="steering-value" class="value-display">-</span>
+                    <span class="status-label">Neigung (X):</span>
+                    <span id="tilt-value" class="value-display">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Bewegung:</span>
+                    <span id="motion-status" class="motor-status unknown">-</span>
                 </div>
                 <div class="status-item">
                     <span class="status-label">Last Update:</span>
@@ -61,47 +65,48 @@
 
             <div class="control-group">
                 <div class="joystick-values">
-                    X: <span id="joy-x">0.00</span> |
-                    Y: <span id="joy-y">0.00</span>
+                    Drehung (Z): <span id="joy-x">+0.0&deg;</span> |
+                    Neigung (X): <span id="joy-y">+0.0&deg;</span>
                 </div>
             </div>
 
             <div class="latency-hint">
                 Hinweis: Die Steuerung läuft über die Cloud &ndash; mit ca. 0,5&ndash;1&nbsp;s Verzögerung.
+                Der Joystick springt nicht zurück, sondern zeigt die tatsächliche Stellung der Achsen.
             </div>
 
             <button id="stop" class="btn btn-danger">NOT-AUS</button>
         </div>
 
-        <!-- Axis Limits Card -->
-        <div class="control-card">
-            <h2>Achsen-Limits</h2>
+        <!-- Axis Limits Card (collapsible) -->
+        <details class="control-card" id="limits-card" open>
+            <summary>Achsen-Limits</summary>
 
             <div class="control-group">
-                <label for="steer-limit">X-Limit (&plusmn;&deg;):</label>
+                <label for="rotation-limit">Drehung (Z) &ndash; max. Winkel (&plusmn;&deg;):</label>
                 <div class="frequency-container">
-                    <input type="range" id="steer-limit" min="5" max="180" value="45" step="5">
+                    <input type="range" id="rotation-limit" min="5" max="180" value="45" step="5">
                     <div class="frequency-display">
-                        <span id="steer-limit-value">45</span>&deg;
+                        <span id="rotation-limit-value">45</span>&deg;
                     </div>
                 </div>
             </div>
 
             <div class="control-group">
-                <label for="max-speed">Y-Limit (Schritte/s):</label>
+                <label for="tilt-limit">Neigung (X) &ndash; max. Winkel (&plusmn;&deg;):</label>
                 <div class="frequency-container">
-                    <input type="range" id="max-speed" min="50" max="1000" value="600" step="50">
+                    <input type="range" id="tilt-limit" min="5" max="90" value="30" step="5">
                     <div class="frequency-display">
-                        <span id="max-speed-value">600</span>
+                        <span id="tilt-limit-value">30</span>&deg;
                     </div>
                 </div>
             </div>
 
             <div class="control-group">
-                <button id="save-drive-config" class="btn btn-primary">Speichern</button>
-                <button id="center-steering" class="btn btn-secondary">X-Achse zentrieren</button>
+                <button id="save-limits" class="btn btn-primary">Speichern</button>
+                <button id="center-axes" class="btn btn-secondary">Achsen zentrieren</button>
             </div>
-        </div>
+        </details>
 
         <!-- Status Log -->
         <div class="status">

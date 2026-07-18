@@ -12,6 +12,11 @@ document.addEventListener('DOMContentLoaded', function() {
     let statePollingInterval = null;
     let deviceStatusPollingInterval = null;
 
+    // Axis limits (degrees). The WebUI owns these values; they are loaded
+    // from the cloud config and pushed to the ESP via /drive/config.
+    let rotationLimitDeg = 45;
+    let tiltLimitDeg = 30;
+
     // Load saved configuration from localStorage
     loadConfiguration();
 
@@ -22,18 +27,28 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('save-config').addEventListener('click', saveConfiguration);
     document.getElementById('test-connection').addEventListener('click', testConnection);
 
+    // Collapsible axis limits card - remember the user's choice
+    const limitsCard = document.getElementById('limits-card');
+    limitsCard.open = localStorage.getItem('webmotor_limits_open') !== 'false';
+    limitsCard.addEventListener('toggle', function() {
+        localStorage.setItem('webmotor_limits_open', limitsCard.open);
+    });
+
     // =========================
     // Joystick
     // =========================
+    // Sticky: the knob does not spring back to center. While idle it mirrors
+    // the actual axis angles reported by the controller; full deflection
+    // corresponds to the configured axis limit.
     const joystick = document.getElementById('joystick');
     const knob = document.getElementById('joystick-knob');
     const joyXDisplay = document.getElementById('joy-x');
     const joyYDisplay = document.getElementById('joy-y');
 
-    let joyX = 0;
-    let joyY = 0;
+    let joyX = 0; // normalized [-1..1], x = rotation around z
+    let joyY = 0; // normalized [-1..1], y = tilt around x
     let engaged = false;
-    let releaseSendsLeft = 0; // send {0,0} a few times after release
+    let releaseSendsLeft = 0; // re-send the held target a few times after release
 
     function setKnob(x, y) {
         const radius = joystick.clientWidth / 2;
@@ -59,23 +74,42 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         joyX = dx;
-        joyY = -dy; // screen y grows downwards, throttle grows upwards
+        joyY = -dy; // screen y grows downwards, tilt grows upwards
         setKnob(joyX, joyY);
         updateJoystickDisplay();
     }
 
     function releaseJoystick() {
+        if (!engaged) return;
         engaged = false;
-        joyX = 0;
-        joyY = 0;
+        // Sticky joystick: keep the value, just make sure the final target
+        // reliably reaches the backend
         releaseSendsLeft = 3;
-        setKnob(0, 0);
-        updateJoystickDisplay();
+    }
+
+    function formatDeg(deg) {
+        return `${deg >= 0 ? '+' : ''}${deg.toFixed(1)}°`;
     }
 
     function updateJoystickDisplay() {
-        joyXDisplay.textContent = joyX.toFixed(2);
-        joyYDisplay.textContent = joyY.toFixed(2);
+        joyXDisplay.textContent = formatDeg(joyX * rotationLimitDeg);
+        joyYDisplay.textContent = formatDeg(joyY * tiltLimitDeg);
+    }
+
+    // While idle, mirror the actual controller angles on the knob
+    function syncJoystickFromState(state) {
+        if (engaged || releaseSendsLeft > 0) return;
+        if (state.rotationDeg === undefined || state.tiltDeg === undefined) return;
+
+        const rotLimit = Number(state.rotationLimitDeg) > 0
+            ? Number(state.rotationLimitDeg) : rotationLimitDeg;
+        const tiltLimit = Number(state.tiltLimitDeg) > 0
+            ? Number(state.tiltLimitDeg) : tiltLimitDeg;
+
+        joyX = Math.max(-1, Math.min(1, rotLimit > 0 ? Number(state.rotationDeg) / rotLimit : 0));
+        joyY = Math.max(-1, Math.min(1, tiltLimit > 0 ? Number(state.tiltDeg) / tiltLimit : 0));
+        setKnob(joyX, joyY);
+        updateJoystickDisplay();
     }
 
     joystick.addEventListener('pointerdown', function(event) {
@@ -94,20 +128,20 @@ document.addEventListener('DOMContentLoaded', function() {
     joystick.addEventListener('pointerup', releaseJoystick);
     joystick.addEventListener('pointercancel', releaseJoystick);
 
-    // Send loop: while engaged post the current target; after release post
-    // {0,0} a few times. The backend stores only the latest value, the ESP
-    // ignores targets older than 2 s (failsafe).
+    // Send loop: while engaged post the current target; after release re-send
+    // the held target a few times so it reliably arrives. The backend stores
+    // only the latest value, the ESP ignores targets older than 2 s.
     setInterval(() => {
         if (!isConfigured) return;
         if (engaged) {
-            sendDriveTarget(joyX, joyY);
+            sendTarget(joyX, joyY);
         } else if (releaseSendsLeft > 0) {
             releaseSendsLeft--;
-            sendDriveTarget(0, 0);
+            sendTarget(joyX, joyY);
         }
     }, SEND_INTERVAL_MS);
 
-    async function sendDriveTarget(x, y) {
+    async function sendTarget(x, y) {
         try {
             await fetch(`${apiEndpoint}/drive`, {
                 method: 'POST',
@@ -126,68 +160,80 @@ document.addEventListener('DOMContentLoaded', function() {
     // Emergency stop
     // =========================
     document.getElementById('stop').addEventListener('click', async function() {
-        releaseJoystick();
-        // Belt and braces: zero the drive target AND queue a stop command
-        sendDriveTarget(0, 0);
+        // Freeze: stop sending targets, the ESP freezes both axes in place.
+        // The knob re-syncs to the frozen position via the state poll.
+        engaged = false;
+        releaseSendsLeft = 0;
         try {
             await apiRequest('/commands', 'POST', { action: 'stop' });
-            updateStatus('🛑 NOT-AUS gesendet');
+            updateStatus('🛑 NOT-AUS gesendet (Achsen eingefroren)');
         } catch (error) {
             updateStatus(`✗ NOT-AUS fehlgeschlagen: ${error.message}`);
         }
     });
 
     // =========================
-    // Drive configuration
+    // Axis limits
     // =========================
-    const steerLimitSlider = document.getElementById('steer-limit');
-    const steerLimitValue = document.getElementById('steer-limit-value');
-    const maxSpeedSlider = document.getElementById('max-speed');
-    const maxSpeedValue = document.getElementById('max-speed-value');
+    const rotationLimitSlider = document.getElementById('rotation-limit');
+    const rotationLimitValue = document.getElementById('rotation-limit-value');
+    const tiltLimitSlider = document.getElementById('tilt-limit');
+    const tiltLimitValue = document.getElementById('tilt-limit-value');
 
-    steerLimitSlider.addEventListener('input', function() {
-        steerLimitValue.textContent = this.value;
+    rotationLimitSlider.addEventListener('input', function() {
+        rotationLimitValue.textContent = this.value;
     });
 
-    maxSpeedSlider.addEventListener('input', function() {
-        maxSpeedValue.textContent = this.value;
+    tiltLimitSlider.addEventListener('input', function() {
+        tiltLimitValue.textContent = this.value;
     });
 
-    async function loadDriveConfig() {
+    async function loadLimits() {
         if (!isConfigured) return;
         try {
             const data = await apiRequest('/drive/config');
             if (data.config) {
-                if (data.config.steerLimitDeg !== undefined && data.config.steerLimitDeg !== null) {
-                    steerLimitSlider.value = Math.round(data.config.steerLimitDeg);
-                    steerLimitValue.textContent = Math.round(data.config.steerLimitDeg);
+                if (data.config.rotationLimitDeg !== undefined && data.config.rotationLimitDeg !== null) {
+                    rotationLimitDeg = Number(data.config.rotationLimitDeg);
+                    rotationLimitSlider.value = Math.round(rotationLimitDeg);
+                    rotationLimitValue.textContent = Math.round(rotationLimitDeg);
                 }
-                if (data.config.maxFrequency !== undefined && data.config.maxFrequency !== null) {
-                    maxSpeedSlider.value = data.config.maxFrequency;
-                    maxSpeedValue.textContent = data.config.maxFrequency;
+                if (data.config.tiltLimitDeg !== undefined && data.config.tiltLimitDeg !== null) {
+                    tiltLimitDeg = Number(data.config.tiltLimitDeg);
+                    tiltLimitSlider.value = Math.round(tiltLimitDeg);
+                    tiltLimitValue.textContent = Math.round(tiltLimitDeg);
                 }
+                updateJoystickDisplay();
             }
         } catch (error) {
-            // Config not set yet - keep defaults
+            // Limits not set yet - keep defaults
         }
     }
 
-    document.getElementById('save-drive-config').addEventListener('click', async function() {
+    document.getElementById('save-limits').addEventListener('click', async function() {
         try {
             await apiRequest('/drive/config', 'POST', {
-                steerLimitDeg: parseFloat(steerLimitSlider.value),
-                maxFrequency: parseInt(maxSpeedSlider.value)
+                rotationLimitDeg: parseFloat(rotationLimitSlider.value),
+                tiltLimitDeg: parseFloat(tiltLimitSlider.value)
             });
-            updateStatus(`✓ Limits gespeichert: X ±${steerLimitSlider.value}°, Y max ${maxSpeedSlider.value} Schritte/s`);
+            rotationLimitDeg = parseFloat(rotationLimitSlider.value);
+            tiltLimitDeg = parseFloat(tiltLimitSlider.value);
+            updateJoystickDisplay();
+            updateStatus(`✓ Limits gespeichert: Drehung ±${rotationLimitSlider.value}°, Neigung ±${tiltLimitSlider.value}°`);
         } catch (error) {
             updateStatus(`✗ Fehler beim Speichern: ${error.message}`);
         }
     });
 
-    document.getElementById('center-steering').addEventListener('click', async function() {
+    document.getElementById('center-axes').addEventListener('click', async function() {
         try {
             await apiRequest('/commands', 'POST', { action: 'center' });
-            updateStatus('✓ Zentrieren gesendet (aktuelle Stellung = Mitte)');
+            // Optimistically re-center the knob; the state poll confirms
+            joyX = 0;
+            joyY = 0;
+            setKnob(0, 0);
+            updateJoystickDisplay();
+            updateStatus('✓ Achsen zentriert (aktuelle Stellung = 0°)');
         } catch (error) {
             updateStatus(`✗ Fehler: ${error.message}`);
         }
@@ -207,7 +253,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('cloud-config-card').open = false;
             startStatePolling();
             startDeviceStatusPolling();
-            loadDriveConfig();
+            loadLimits();
         }
     }
 
@@ -228,7 +274,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         startStatePolling();
         startDeviceStatusPolling();
-        loadDriveConfig();
+        loadLimits();
     }
 
     async function testConnection() {
@@ -284,22 +330,22 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateRobotState(state) {
-        const driveStatus = document.getElementById('drive-status');
-        if (state.failsafe) {
-            driveStatus.textContent = 'Failsafe';
-            driveStatus.className = 'motor-status stopped';
-        } else if (state.driving) {
-            driveStatus.textContent = 'Läuft';
-            driveStatus.className = 'motor-status running';
-        } else if (state.driving !== undefined) {
-            driveStatus.textContent = 'Steht';
-            driveStatus.className = 'motor-status unknown';
+        const motionStatus = document.getElementById('motion-status');
+        if (state.moving !== undefined) {
+            motionStatus.textContent = state.moving ? 'Bewegt' : 'Steht';
+            motionStatus.className = state.moving ? 'motor-status running' : 'motor-status unknown';
         }
 
-        const steeringValue = document.getElementById('steering-value');
-        if (state.steeringDeg !== undefined && state.steerLimitDeg !== undefined) {
-            steeringValue.textContent =
-                `${Number(state.steeringDeg).toFixed(1)}° / ±${Number(state.steerLimitDeg).toFixed(0)}°`;
+        const rotationValue = document.getElementById('rotation-value');
+        if (state.rotationDeg !== undefined && state.rotationLimitDeg !== undefined) {
+            rotationValue.textContent =
+                `${formatDeg(Number(state.rotationDeg))} / ±${Number(state.rotationLimitDeg).toFixed(0)}°`;
+        }
+
+        const tiltValue = document.getElementById('tilt-value');
+        if (state.tiltDeg !== undefined && state.tiltLimitDeg !== undefined) {
+            tiltValue.textContent =
+                `${formatDeg(Number(state.tiltDeg))} / ±${Number(state.tiltLimitDeg).toFixed(0)}°`;
         }
 
         const lastUpdate = document.getElementById('last-update');
@@ -309,6 +355,8 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             lastUpdate.textContent = new Date().toLocaleTimeString();
         }
+
+        syncJoystickFromState(state);
     }
 
     function updateConnectionStatus() {

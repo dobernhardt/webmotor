@@ -4,15 +4,15 @@
 #include "wifi_manager.h"
 #include "web_server.h"
 #include "motor_controller_uln2003.h"
-#include "drive_controller.h"
+#include "platform_controller.h"
 #include "cloud_client.h"
 #include "version.h"
 
 WifiManager wifiManager;
 WebServerController webServer;
-MotorControllerULN2003 driveMotor(DRIVE_IN1_PIN, DRIVE_IN2_PIN, DRIVE_IN3_PIN, DRIVE_IN4_PIN);
-MotorControllerULN2003 steerMotor(STEER_IN1_PIN, STEER_IN2_PIN, STEER_IN3_PIN, STEER_IN4_PIN);
-DriveController driveController(driveMotor, steerMotor);
+MotorControllerULN2003 rotationMotor(ROTATION_IN1_PIN, ROTATION_IN2_PIN, ROTATION_IN3_PIN, ROTATION_IN4_PIN);
+MotorControllerULN2003 tiltMotor(TILT_IN1_PIN, TILT_IN2_PIN, TILT_IN3_PIN, TILT_IN4_PIN);
+PlatformController platformController(rotationMotor, tiltMotor);
 CloudClient cloudClient;
 
 void processCloudCommand(const String& commandJson) {
@@ -30,9 +30,9 @@ void processCloudCommand(const String& commandJson) {
     const String action = doc["action"] | "";
 
     if (action.equalsIgnoreCase("stop")) {
-        driveController.stop();
+        platformController.stop();
     } else if (action.equalsIgnoreCase("center")) {
-        driveController.centerSteering();
+        platformController.centerAxes();
     } else {
         Serial.print("[CLOUD] Unknown action: ");
         Serial.println(action);
@@ -55,16 +55,16 @@ void setup() {
     wifiManager.begin();
     Serial.println("[INIT] Wi-Fi Manager ready");
 
-    Serial.println("[INIT] Starting Drive Controller...");
-    driveController.begin();
-    Serial.println("[INIT] Drive Controller ready");
+    Serial.println("[INIT] Starting Platform Controller...");
+    platformController.begin();
+    Serial.println("[INIT] Platform Controller ready");
 
     Serial.println("[INIT] Starting Cloud Client...");
     cloudClient.begin();
     Serial.println("[INIT] Cloud Client ready");
 
     Serial.println("[INIT] Starting Web Server...");
-    webServer.begin(driveController, wifiManager, cloudClient);
+    webServer.begin(platformController, wifiManager, cloudClient);
     Serial.println("[INIT] Web Server ready");
 
     Serial.println("[BOOT] System initialization complete!");
@@ -76,20 +76,18 @@ void loop() {
     wifiManager.handle();
     webServer.handle();
     cloudClient.handle();
-    driveController.handle();
 
     // Apply the latest joystick target from the cloud (latest-value polling)
     float x, y;
-    if (cloudClient.getDriveTarget(x, y)) {
-        driveController.setTarget(x, y);
+    if (cloudClient.getTarget(x, y)) {
+        platformController.setTarget(x, y);
     }
 
-    // Apply drive configuration changed in the cloud frontend
-    float steerLimitDeg;
-    uint32_t maxFrequency;
-    if (cloudClient.getDriveConfigUpdate(steerLimitDeg, maxFrequency)) {
-        Serial.println("[CLOUD] Applying drive config from cloud");
-        driveController.setConfig(steerLimitDeg, maxFrequency);
+    // Apply axis limits changed in the cloud frontend (WebUI owns them)
+    float rotationLimitDeg, tiltLimitDeg;
+    if (cloudClient.getLimitsUpdate(rotationLimitDeg, tiltLimitDeg)) {
+        Serial.println("[CLOUD] Applying axis limits from cloud");
+        platformController.setLimits(rotationLimitDeg, tiltLimitDeg);
     }
 
     // Process discrete cloud commands (stop, center)
@@ -97,8 +95,8 @@ void loop() {
         processCloudCommand(cloudClient.getCommand());
     }
 
-    // Keep the cloud updated with the current drive status
-    cloudClient.setDriveStatus(driveController.getStatus());
+    // Keep the cloud updated with the current platform status
+    cloudClient.setStatus(platformController.getStatus());
 
     // Status report every 60 seconds
     unsigned long currentTime = millis();
@@ -122,13 +120,12 @@ void loop() {
             Serial.println("WiFi: Disconnected");
         }
 
-        DriveStatus status = driveController.getStatus();
-        Serial.printf("Drive: %s (x=%.2f, y=%.2f), steering %.1f deg (limit %.1f), maxFreq %u Hz%s\n",
-                      status.driving ? "driving" : "stopped",
+        PlatformStatus status = platformController.getStatus();
+        Serial.printf("Platform: %s (x=%.2f, y=%.2f), rotation %.1f deg (limit %.1f), tilt %.1f deg (limit %.1f)\n",
+                      status.moving ? "moving" : "idle",
                       status.x, status.y,
-                      status.steeringDeg, status.steerLimitDeg,
-                      status.maxFrequency,
-                      status.failsafe ? " [FAILSAFE]" : "");
+                      status.rotationDeg, status.rotationLimitDeg,
+                      status.tiltDeg, status.tiltLimitDeg);
 
         Serial.println("=== END STATUS ===");
     }

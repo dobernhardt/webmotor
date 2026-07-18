@@ -2,6 +2,10 @@
 
 namespace {
 constexpr uint32_t kReconnectIntervalMs = 5000;
+// Delay between saving credentials and tearing down the AP, so the HTTP
+// response still reaches the client before its connection dies.
+constexpr uint32_t kApplyCredentialsDelayMs = 750;
+constexpr uint16_t kDnsPort = 53;
 constexpr const char* kPreferencesNamespace = "webmotor";
 constexpr const char* kPreferenceKeySSID = "ssid";
 constexpr const char* kPreferenceKeyPassword = "password";
@@ -11,9 +15,12 @@ constexpr const char* kApPassword = "12345678";
 
 WifiManager::WifiManager()
     : preferences(),
+      dnsServer(),
       storedSSID(),
       storedPassword(),
       apModeActive(false),
+      reconnectPending(false),
+      reconnectRequestedAt(0),
       lastReconnectAttempt(0) {}
 
 void WifiManager::begin() {
@@ -24,6 +31,21 @@ void WifiManager::begin() {
 }
 
 void WifiManager::handle() {
+    if (apModeActive) {
+        dnsServer.processNextRequest();
+    }
+
+    if (reconnectPending) {
+        if (millis() - reconnectRequestedAt >= kApplyCredentialsDelayMs) {
+            reconnectPending = false;
+            stopAccessPoint();
+            WiFi.disconnect();
+            WiFi.mode(WIFI_STA);
+            connectToWiFi();
+        }
+        return;
+    }
+
     if (apModeActive) {
         return;
     }
@@ -46,10 +68,8 @@ void WifiManager::saveCredentials(const String& ssid, const String& password) {
     preferences.putString(kPreferenceKeySSID, storedSSID);
     preferences.putString(kPreferenceKeyPassword, storedPassword);
 
-    WiFi.disconnect();
-    WiFi.mode(WIFI_STA);
-    apModeActive = false;
-    connectToWiFi();
+    reconnectPending = true;
+    reconnectRequestedAt = millis();
 }
 
 String WifiManager::getSSID() const {
@@ -102,12 +122,27 @@ void WifiManager::connectToWiFi() {
 }
 
 void WifiManager::startAccessPoint() {
-    WiFi.mode(WIFI_AP);
+    // AP+STA so the web server can scan for networks while the AP is up
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.disconnect();
     const bool success = WiFi.softAP(kApSSID, kApPassword);
     apModeActive = success;
     Serial.println(success ? "Access point started." : "Failed to start access point.");
     if (success) {
         Serial.print("AP IP address: ");
         Serial.println(WiFi.softAPIP());
+        // Answer every DNS query with the AP address: phones detect the
+        // captive portal through this and open the config page on connect.
+        dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+        dnsServer.start(kDnsPort, "*", WiFi.softAPIP());
     }
+}
+
+void WifiManager::stopAccessPoint() {
+    if (!apModeActive) {
+        return;
+    }
+    dnsServer.stop();
+    WiFi.softAPdisconnect(true);
+    apModeActive = false;
 }

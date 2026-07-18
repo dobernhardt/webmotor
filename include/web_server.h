@@ -4,19 +4,19 @@
 #include <Arduino.h>
 #include <WebServer.h>
 
-class DriveController;
+class PlatformController;
 class WifiManager;
 class CloudClient;
 
 class WebServerController {
 public:
     WebServerController();
-    void begin(DriveController& driveController, WifiManager& wifiManager, CloudClient& cloudClient);
+    void begin(PlatformController& platformController, WifiManager& wifiManager, CloudClient& cloudClient);
     void handle();
 
 private:
     ::WebServer server;
-    DriveController* drive;
+    PlatformController* platform;
     WifiManager* wifi;
     CloudClient* cloud;
 
@@ -29,6 +29,9 @@ private:
     void handleDriveStop();
     void handleWiFiConfig();
     void handleWiFiStatus();
+    void handleWiFiScan();
+    void servePortalPage();
+    void serveStatusPage();
     void handleCloudConfig();
     void handleCloudStatus();
     void handleCloudTest();

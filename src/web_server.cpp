@@ -2,22 +2,162 @@
 #include <WiFi.h>
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
-#include "drive_controller.h"
+#include "platform_controller.h"
 #include "wifi_manager.h"
 #include "cloud_client.h"
 #include "version.h"
 
 namespace {
 constexpr int kHttpPort = 80;
+
+// WLAN setup page for AP mode, embedded in the firmware so it works
+// without a SPIFFS image. Shown automatically as a captive portal.
+const char kPortalPage[] PROGMEM = R"rawliteral(<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebMotor WLAN-Setup</title>
+<style>
+body{font-family:-apple-system,Helvetica,Arial,sans-serif;margin:0;padding:24px;background:#f2f2f7;color:#1c1c1e}
+.card{max-width:400px;margin:0 auto;background:#fff;border-radius:12px;padding:20px}
+h1{font-size:1.3em;margin:0 0 4px}
+p.sub{color:#6e6e73;margin:0 0 16px;font-size:.9em}
+label{display:block;font-size:.85em;color:#6e6e73;margin:12px 0 4px}
+select,input{width:100%;box-sizing:border-box;font-size:1em;padding:10px;border:1px solid #d1d1d6;border-radius:8px;background:#fff}
+#save{width:100%;font-size:1em;padding:12px;border:none;border-radius:8px;background:#007aff;color:#fff;margin-top:16px;font-weight:600}
+#save:disabled{opacity:.5}
+#rescan{background:none;border:none;color:#007aff;font-size:.85em;margin-top:6px;padding:4px}
+#status{margin-top:14px;font-size:.9em;text-align:center;min-height:1.2em}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>WebMotor</h1>
+<p class="sub">Mit welchem WLAN soll sich der Controller verbinden?</p>
+<label for="ssid">Netzwerk</label>
+<select id="ssid"><option value="">Suche Netzwerke&hellip;</option></select>
+<button id="rescan" type="button" onclick="scan()">Erneut suchen</button>
+<label for="pass">Passwort</label>
+<input id="pass" type="password" autocomplete="off">
+<button id="save" type="button" onclick="save()">Verbinden</button>
+<div id="status"></div>
+</div>
+<script>
+function el(id){return document.getElementById(id)}
+function esc(s){return s.replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function scan(){
+  var sel=el('ssid');
+  sel.innerHTML='<option value="">Suche Netzwerke…</option>';
+  fetch('/api/wifi/scan').then(function(r){return r.json()}).then(function(data){
+    var seen={},options='';
+    (data.networks||[]).sort(function(a,b){return b.rssi-a.rssi}).forEach(function(n){
+      if(!n.ssid||seen[n.ssid])return;
+      seen[n.ssid]=true;
+      options+='<option value="'+esc(n.ssid)+'">'+esc(n.ssid)+(n.secure?' 🔒':'')+'</option>';
+    });
+    sel.innerHTML=options||'<option value="">Keine Netzwerke gefunden</option>';
+  }).catch(function(){
+    sel.innerHTML='<option value="">Suche fehlgeschlagen</option>';
+  });
+}
+function save(){
+  var ssid=el('ssid').value;
+  if(!ssid){el('status').textContent='Bitte ein Netzwerk wählen.';return}
+  el('save').disabled=true;
+  el('status').textContent='Speichere…';
+  fetch('/api/wifi/config',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ssid:ssid,password:el('pass').value})})
+  .then(function(r){
+    if(!r.ok)throw 0;
+    el('status').textContent='Gespeichert! Der Controller verbindet sich jetzt mit "'+ssid+'". Falls das Passwort falsch war, erscheint der Hotspot nach ca. 15 Sekunden wieder.';
+  }).catch(function(){
+    el('save').disabled=false;
+    el('status').textContent='Fehler beim Speichern, bitte erneut versuchen.';
+  });
+}
+scan();
+</script>
+</body>
+</html>
+)rawliteral";
+
+// Status page for normal (STA) operation: device status plus a pointer
+// to the cloud frontend, which hosts the actual control UI.
+const char kStatusPage[] PROGMEM = R"rawliteral(<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebMotor Status</title>
+<style>
+body{font-family:-apple-system,Helvetica,Arial,sans-serif;margin:0;padding:24px;background:#f2f2f7;color:#1c1c1e}
+.card{max-width:420px;margin:0 auto 16px;background:#fff;border-radius:12px;padding:20px}
+h1{font-size:1.3em;margin:0}
+p.sub{color:#6e6e73;margin:2px 0 0;font-size:.85em}
+h2{font-size:.8em;text-transform:uppercase;letter-spacing:.05em;color:#6e6e73;margin:0 0 8px}
+.row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f2f2f7;font-size:.95em}
+.row:last-child{border-bottom:none}
+.row span:first-child{color:#6e6e73}
+.ok{color:#34c759}.warn{color:#ff9500}
+a.cloud{display:block;text-align:center;background:#007aff;color:#fff;text-decoration:none;padding:12px;border-radius:8px;font-weight:600}
+p.hint{color:#6e6e73;font-size:.85em;text-align:center;margin:10px 0 0}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>WebMotor</h1>
+<p class="sub" id="version">&nbsp;</p>
+</div>
+<div class="card">
+<h2>Status</h2>
+<div class="row"><span>WLAN</span><span id="wifi">&hellip;</span></div>
+<div class="row"><span>IP-Adresse</span><span id="ip">&hellip;</span></div>
+<div class="row"><span>Rotation</span><span id="rot">&hellip;</span></div>
+<div class="row"><span>Neigung</span><span id="tilt">&hellip;</span></div>
+<div class="row"><span>Bewegung</span><span id="moving">&hellip;</span></div>
+<div class="row"><span>Cloud</span><span id="cloud">&hellip;</span></div>
+</div>
+<div class="card">
+<a class="cloud" id="cloudlink" href="https://calm-river-0a48e7503.6.azurestaticapps.net">Cloud-Frontend &ouml;ffnen</a>
+<p class="hint">Die Steuerung l&auml;uft &uuml;ber das Cloud-Frontend &ndash; diese Seite zeigt nur den Ger&auml;testatus.</p>
+</div>
+<script>
+function el(id){return document.getElementById(id)}
+function txt(id,v){el(id).textContent=v}
+fetch('/api/info').then(function(r){return r.json()}).then(function(i){
+  txt('version','Version '+i.version+' · '+(i.commit||'')+' · '+(i.buildTimestamp||''));
+});
+fetch('/api/cloud/status').then(function(r){return r.json()}).then(function(c){
+  var active=c.enabled&&c.configured;
+  txt('cloud',active?'aktiv':(c.configured?'konfiguriert, inaktiv':'nicht konfiguriert'));
+  el('cloud').className=active?'ok':'warn';
+  if(c.apiEndpoint){try{el('cloudlink').href=new URL(c.apiEndpoint).origin}catch(e){}}
+});
+function refresh(){
+  fetch('/api/wifi/status').then(function(r){return r.json()}).then(function(w){
+    txt('wifi',w.ssid||'–');txt('ip',w.ipAddress||'–');
+  });
+  fetch('/api/drive/status').then(function(r){return r.json()}).then(function(d){
+    txt('rot',d.rotationDeg.toFixed(1)+'° / ±'+d.rotationLimitDeg.toFixed(0)+'°');
+    txt('tilt',d.tiltDeg.toFixed(1)+'° / ±'+d.tiltLimitDeg.toFixed(0)+'°');
+    txt('moving',d.moving?'in Bewegung':'ruht');
+  });
+}
+refresh();setInterval(refresh,5000);
+</script>
+</body>
+</html>
+)rawliteral";
 }
 
 WebServerController::WebServerController()
     : server(kHttpPort),
-      drive(nullptr),
+      platform(nullptr),
       wifi(nullptr),
       cloud(nullptr) {}
 
-void WebServerController::begin(DriveController& driveController, WifiManager& wifiManager, CloudClient& cloudClient) {
+void WebServerController::begin(PlatformController& platformController, WifiManager& wifiManager, CloudClient& cloudClient) {
     Serial.println("[WEB] Initializing WebServer...");
 
     // Initialize SPIFFS
@@ -27,7 +167,7 @@ void WebServerController::begin(DriveController& driveController, WifiManager& w
     }
     Serial.println("[WEB] SPIFFS mounted successfully");
 
-    drive = &driveController;
+    platform = &platformController;
     wifi = &wifiManager;
     cloud = &cloudClient;
     Serial.println("[WEB] Controllers linked");
@@ -91,6 +231,11 @@ void WebServerController::registerRoutes() {
         this->handleWiFiStatus();
     });
 
+    server.on("/api/wifi/scan", HTTP_GET, [this]() {
+        Serial.println("[API] GET /api/wifi/scan");
+        this->handleWiFiScan();
+    });
+
     // Cloud configuration routes
     server.on("/api/cloud/config", HTTP_POST, [this]() {
         Serial.println("[API] POST /api/cloud/config");
@@ -107,9 +252,14 @@ void WebServerController::registerRoutes() {
         this->handleCloudTest();
     });
 
-    // Static file routes
+    // Root page: setup portal in AP mode, embedded status page otherwise.
+    // The control UI lives in the cloud frontend, not on the device.
     server.on("/", [this]() {
-        this->serveFile("/index.html", "text/html");
+        if (wifi != nullptr && wifi->isAccessPoint()) {
+            this->servePortalPage();
+            return;
+        }
+        this->serveStatusPage();
     });
 
     server.on("/app.js", [this]() {
@@ -122,6 +272,15 @@ void WebServerController::registerRoutes() {
 
     // Catch-all for 404
     server.onNotFound([this]() {
+        // Captive-portal probes (captive.apple.com, connectivitycheck, ...)
+        // land here; the redirect makes phones open the setup page.
+        if (wifi != nullptr && wifi->isAccessPoint()) {
+            Serial.print("[WEB] Captive portal redirect: ");
+            Serial.println(server.uri());
+            server.sendHeader("Location", "http://" + WiFi.softAPIP().toString() + "/", true);
+            server.send(302, "text/plain", "");
+            return;
+        }
         Serial.print("[WEB] 404 - File not found: ");
         Serial.println(server.uri());
         server.send(404, "text/plain", "File not found");
@@ -131,8 +290,8 @@ void WebServerController::registerRoutes() {
 }
 
 void WebServerController::handleDrive() {
-    if (drive == nullptr) {
-        sendJson(500, "{\"error\":\"Drive controller unavailable\"}");
+    if (platform == nullptr) {
+        sendJson(500, "{\"error\":\"Platform controller unavailable\"}");
         return;
     }
 
@@ -148,26 +307,26 @@ void WebServerController::handleDrive() {
         return;
     }
 
-    drive->setTarget(doc["x"].as<float>(), doc["y"].as<float>());
+    platform->setTarget(doc["x"].as<float>(), doc["y"].as<float>());
     server.send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
 void WebServerController::handleDriveStatus() {
-    if (drive == nullptr) {
-        sendJson(500, "{\"error\":\"Drive controller unavailable\"}");
+    if (platform == nullptr) {
+        sendJson(500, "{\"error\":\"Platform controller unavailable\"}");
         return;
     }
 
-    const DriveStatus status = drive->getStatus();
+    const PlatformStatus status = platform->getStatus();
 
     JsonDocument doc;
     doc["x"] = status.x;
     doc["y"] = status.y;
-    doc["steeringDeg"] = status.steeringDeg;
-    doc["steerLimitDeg"] = status.steerLimitDeg;
-    doc["maxFrequency"] = status.maxFrequency;
-    doc["driving"] = status.driving;
-    doc["failsafe"] = status.failsafe;
+    doc["rotationDeg"] = status.rotationDeg;
+    doc["tiltDeg"] = status.tiltDeg;
+    doc["rotationLimitDeg"] = status.rotationLimitDeg;
+    doc["tiltLimitDeg"] = status.tiltLimitDeg;
+    doc["moving"] = status.moving;
 
     String jsonResponse;
     serializeJson(doc, jsonResponse);
@@ -175,14 +334,14 @@ void WebServerController::handleDriveStatus() {
 }
 
 void WebServerController::handleDriveConfigGet() {
-    if (drive == nullptr) {
-        sendJson(500, "{\"error\":\"Drive controller unavailable\"}");
+    if (platform == nullptr) {
+        sendJson(500, "{\"error\":\"Platform controller unavailable\"}");
         return;
     }
 
     JsonDocument doc;
-    doc["steerLimitDeg"] = drive->getSteerLimitDeg();
-    doc["maxFrequency"] = drive->getMaxFrequency();
+    doc["rotationLimitDeg"] = platform->getRotationLimitDeg();
+    doc["tiltLimitDeg"] = platform->getTiltLimitDeg();
 
     String jsonResponse;
     serializeJson(doc, jsonResponse);
@@ -192,8 +351,8 @@ void WebServerController::handleDriveConfigGet() {
 void WebServerController::handleDriveConfigPost() {
     Serial.println("[API] POST /api/drive/config");
 
-    if (drive == nullptr) {
-        sendJson(500, "{\"error\":\"Drive controller unavailable\"}");
+    if (platform == nullptr) {
+        sendJson(500, "{\"error\":\"Platform controller unavailable\"}");
         return;
     }
 
@@ -209,34 +368,34 @@ void WebServerController::handleDriveConfigPost() {
         return;
     }
 
-    const float steerLimitDeg = doc["steerLimitDeg"] | drive->getSteerLimitDeg();
-    const uint32_t maxFrequency = doc["maxFrequency"] | drive->getMaxFrequency();
+    const float rotationLimitDeg = doc["rotationLimitDeg"] | platform->getRotationLimitDeg();
+    const float tiltLimitDeg = doc["tiltLimitDeg"] | platform->getTiltLimitDeg();
 
-    if (!drive->setConfig(steerLimitDeg, maxFrequency)) {
-        sendJson(400, "{\"error\":\"Invalid configuration values\"}");
+    if (!platform->setLimits(rotationLimitDeg, tiltLimitDeg)) {
+        sendJson(400, "{\"error\":\"Invalid limit values\"}");
         return;
     }
 
-    sendJson(200, "{\"status\":\"configuration saved\"}");
+    sendJson(200, "{\"status\":\"limits applied\"}");
 }
 
 void WebServerController::handleDriveCenter() {
-    if (drive == nullptr) {
-        sendJson(500, "{\"error\":\"Drive controller unavailable\"}");
+    if (platform == nullptr) {
+        sendJson(500, "{\"error\":\"Platform controller unavailable\"}");
         return;
     }
 
-    drive->centerSteering();
-    sendJson(200, "{\"status\":\"steering centered\"}");
+    platform->centerAxes();
+    sendJson(200, "{\"status\":\"axes centered\"}");
 }
 
 void WebServerController::handleDriveStop() {
-    if (drive == nullptr) {
-        sendJson(500, "{\"error\":\"Drive controller unavailable\"}");
+    if (platform == nullptr) {
+        sendJson(500, "{\"error\":\"Platform controller unavailable\"}");
         return;
     }
 
-    drive->stop();
+    platform->stop();
     sendJson(200, "{\"status\":\"stopped\"}");
 }
 
@@ -323,6 +482,35 @@ void WebServerController::handleWiFiStatus() {
     String jsonResponse;
     serializeJson(doc, jsonResponse);
     server.send(200, "application/json", jsonResponse);
+}
+
+void WebServerController::handleWiFiScan() {
+    // Blocks for ~2 s; only used from the setup page, where that is fine
+    const int16_t count = WiFi.scanNetworks();
+
+    JsonDocument doc;
+    JsonArray networks = doc["networks"].to<JsonArray>();
+    for (int16_t i = 0; i < count; ++i) {
+        JsonObject network = networks.add<JsonObject>();
+        network["ssid"] = WiFi.SSID(i);
+        network["rssi"] = WiFi.RSSI(i);
+        network["secure"] = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
+    }
+    WiFi.scanDelete();
+
+    String jsonResponse;
+    serializeJson(doc, jsonResponse);
+    server.send(200, "application/json", jsonResponse);
+}
+
+void WebServerController::servePortalPage() {
+    Serial.println("[WEB] Serving captive portal page");
+    server.send(200, "text/html", kPortalPage);
+}
+
+void WebServerController::serveStatusPage() {
+    Serial.println("[WEB] Serving status page");
+    server.send(200, "text/html", kStatusPage);
 }
 
 void WebServerController::sendJson(int statusCode, const String& payload) {
