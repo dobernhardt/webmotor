@@ -1,6 +1,7 @@
 #include "cloud_client.h"
 #include <ArduinoJson.h>
 #include <WiFi.h>
+#include "config.h"
 
 namespace {
 constexpr const char* NVS_NAMESPACE = "cloud";
@@ -185,6 +186,9 @@ void CloudClient::loadConfig() {
     preferences_.begin(NVS_NAMESPACE, true); // Read-only
 
     apiEndpoint_ = preferences_.getString(KEY_ENDPOINT, "");
+    if (apiEndpoint_.isEmpty()) {
+        apiEndpoint_ = DEFAULT_CLOUD_API_ENDPOINT;
+    }
     apiKey_ = preferences_.getString(KEY_API_KEY, "");
     enabled_ = preferences_.getBool(KEY_ENABLED, false);
 

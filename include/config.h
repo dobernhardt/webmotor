@@ -43,4 +43,9 @@
 #define AP_SSID "WebMotor-Config"
 #define AP_IP "192.168.4.1"
 
+// Cloud sync: default API endpoint, used until a different one is saved on
+// the device. Same host as the cloud frontend (Azure Static Web Apps serves
+// the API under /api); an emptied endpoint falls back to this default.
+#define DEFAULT_CLOUD_API_ENDPOINT "https://calm-river-0a48e7503.6.azurestaticapps.net/api"
+
 #endif // CONFIG_H

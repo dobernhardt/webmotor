@@ -102,6 +102,13 @@ h2{font-size:.8em;text-transform:uppercase;letter-spacing:.05em;color:#6e6e73;ma
 .ok{color:#34c759}.warn{color:#ff9500}
 a.cloud{display:block;text-align:center;background:#007aff;color:#fff;text-decoration:none;padding:12px;border-radius:8px;font-weight:600}
 p.hint{color:#6e6e73;font-size:.85em;text-align:center;margin:10px 0 0}
+summary{font-size:.8em;text-transform:uppercase;letter-spacing:.05em;color:#6e6e73;cursor:pointer}
+label{display:block;font-size:.85em;color:#6e6e73;margin:12px 0 4px}
+input[type=url],input[type=password]{width:100%;box-sizing:border-box;font-size:1em;padding:10px;border:1px solid #d1d1d6;border-radius:8px;background:#fff}
+.chk{display:flex;align-items:center;gap:8px;color:#1c1c1e;font-size:.95em;margin-top:12px}
+#csave{width:100%;font-size:1em;padding:12px;border:none;border-radius:8px;background:#007aff;color:#fff;margin-top:16px;font-weight:600}
+#csave:disabled{opacity:.5}
+#cstatus{margin-top:10px;font-size:.9em;text-align:center;min-height:1.2em}
 </style>
 </head>
 <body>
@@ -122,18 +129,51 @@ p.hint{color:#6e6e73;font-size:.85em;text-align:center;margin:10px 0 0}
 <a class="cloud" id="cloudlink" href="https://calm-river-0a48e7503.6.azurestaticapps.net">Cloud-Frontend &ouml;ffnen</a>
 <p class="hint">Die Steuerung l&auml;uft &uuml;ber das Cloud-Frontend &ndash; diese Seite zeigt nur den Ger&auml;testatus.</p>
 </div>
+<div class="card">
+<details>
+<summary>Cloud-Konfiguration</summary>
+<label for="ep">API-Endpoint</label>
+<input id="ep" type="url" placeholder="https://.../api">
+<label for="key">API-Key</label>
+<input id="key" type="password" autocomplete="off">
+<label class="chk"><input id="en" type="checkbox"> Cloud-Sync aktiv</label>
+<button id="csave" type="button" onclick="saveCloud()">Speichern</button>
+<div id="cstatus"></div>
+</details>
+</div>
 <script>
 function el(id){return document.getElementById(id)}
 function txt(id,v){el(id).textContent=v}
 fetch('/api/info').then(function(r){return r.json()}).then(function(i){
   txt('version','Version '+i.version+' · '+(i.commit||'')+' · '+(i.buildTimestamp||''));
 });
-fetch('/api/cloud/status').then(function(r){return r.json()}).then(function(c){
-  var active=c.enabled&&c.configured;
-  txt('cloud',active?'aktiv':(c.configured?'konfiguriert, inaktiv':'nicht konfiguriert'));
-  el('cloud').className=active?'ok':'warn';
-  if(c.apiEndpoint){try{el('cloudlink').href=new URL(c.apiEndpoint).origin}catch(e){}}
-});
+function loadCloud(){
+  fetch('/api/cloud/status').then(function(r){return r.json()}).then(function(c){
+    var active=c.enabled&&c.configured;
+    txt('cloud',active?'aktiv':(c.configured?'konfiguriert, inaktiv':'nicht konfiguriert'));
+    el('cloud').className=active?'ok':'warn';
+    if(c.apiEndpoint){try{el('cloudlink').href=new URL(c.apiEndpoint).origin}catch(e){}}
+    el('ep').value=c.apiEndpoint||'';
+    el('en').checked=!!c.enabled;
+    el('key').placeholder=c.apiKey?'Gespeichert – leer lassen zum Behalten':'';
+  });
+}
+function saveCloud(){
+  var btn=el('csave');
+  btn.disabled=true;
+  txt('cstatus','Speichere…');
+  fetch('/api/cloud/config',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({apiEndpoint:el('ep').value.trim(),apiKey:el('key').value,enabled:el('en').checked})})
+  .then(function(r){
+    if(!r.ok)throw 0;
+    txt('cstatus','Gespeichert.');
+    el('key').value='';
+    loadCloud();
+  }).catch(function(){
+    txt('cstatus','Fehler beim Speichern.');
+  }).then(function(){btn.disabled=false});
+}
+loadCloud();
 function refresh(){
   fetch('/api/wifi/status').then(function(r){return r.json()}).then(function(w){
     txt('wifi',w.ssid||'–');txt('ip',w.ipAddress||'–');
