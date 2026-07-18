@@ -4,7 +4,9 @@
 
 namespace {
     constexpr float kDeadzone = 0.05f;
-    constexpr float kStepsPerDeg = (float)STEPS_PER_REVOLUTION / 360.0f;
+    // Steps per degree of platform angle, gear reduction included (config.h)
+    constexpr float kRotationStepsPerDeg = ROTATION_STEPS_PER_PLATFORM_DEG;
+    constexpr float kTiltStepsPerDeg = TILT_STEPS_PER_PLATFORM_DEG;
     constexpr uint64_t kAxisPeriodUs = 1000000ULL / AXIS_STEP_FREQUENCY;
 }
 
@@ -48,8 +50,10 @@ void PlatformController::begin() {
     ESP_ERROR_CHECK(esp_timer_start_periodic(rotationTimer_, kAxisPeriodUs));
     ESP_ERROR_CHECK(esp_timer_start_periodic(tiltTimer_, kAxisPeriodUs));
 
-    Serial.printf("[PLATFORM] Ready (rotationLimit=%.1f deg, tiltLimit=%.1f deg, %u steps/s)\n",
-                  rotationLimitDeg_, tiltLimitDeg_, (unsigned)AXIS_STEP_FREQUENCY);
+    Serial.printf("[PLATFORM] Ready (rotationLimit=%.1f deg, tiltLimit=%.1f deg, "
+                  "%.2f/%.2f steps per platform deg, %u steps/s)\n",
+                  rotationLimitDeg_, tiltLimitDeg_,
+                  kRotationStepsPerDeg, kTiltStepsPerDeg, (unsigned)AXIS_STEP_FREQUENCY);
 }
 
 void PlatformController::setTarget(float x, float y) {
@@ -61,8 +65,8 @@ void PlatformController::setTarget(float x, float y) {
     targetX_ = x;
     targetY_ = y;
 
-    rotationTarget_ = lroundf(x * (float)limitSteps(rotationLimitDeg_));
-    tiltTarget_ = lroundf(y * (float)limitSteps(tiltLimitDeg_));
+    rotationTarget_ = lroundf(x * (float)rotationLimitSteps());
+    tiltTarget_ = lroundf(y * (float)tiltLimitSteps());
 }
 
 void PlatformController::stop() {
@@ -70,8 +74,8 @@ void PlatformController::stop() {
     rotationTarget_ = rotationMotor_.getPosition();
     tiltTarget_ = tiltMotor_.getPosition();
 
-    const int32_t rotationLimit = limitSteps(rotationLimitDeg_);
-    const int32_t tiltLimit = limitSteps(tiltLimitDeg_);
+    const int32_t rotationLimit = rotationLimitSteps();
+    const int32_t tiltLimit = tiltLimitSteps();
     targetX_ = (rotationLimit > 0) ? (float)rotationTarget_ / (float)rotationLimit : 0.0f;
     targetY_ = (tiltLimit > 0) ? (float)tiltTarget_ / (float)tiltLimit : 0.0f;
 }
@@ -102,8 +106,8 @@ bool PlatformController::setLimits(float rotationLimitDeg, float tiltLimitDeg) {
     tiltLimitDeg_ = tiltLimitDeg;
 
     // Re-apply the current joystick target under the new limits
-    const int32_t rotationLimit = limitSteps(rotationLimitDeg_);
-    const int32_t tiltLimit = limitSteps(tiltLimitDeg_);
+    const int32_t rotationLimit = rotationLimitSteps();
+    const int32_t tiltLimit = tiltLimitSteps();
     rotationTarget_ = constrain((int32_t)lroundf(targetX_ * (float)rotationLimit), -rotationLimit, rotationLimit);
     tiltTarget_ = constrain((int32_t)lroundf(targetY_ * (float)tiltLimit), -tiltLimit, tiltLimit);
 
@@ -116,8 +120,8 @@ PlatformStatus PlatformController::getStatus() const {
     PlatformStatus status;
     status.x = targetX_;
     status.y = targetY_;
-    status.rotationDeg = (float)rotationMotor_.getPosition() / kStepsPerDeg;
-    status.tiltDeg = (float)tiltMotor_.getPosition() / kStepsPerDeg;
+    status.rotationDeg = (float)rotationMotor_.getPosition() / kRotationStepsPerDeg;
+    status.tiltDeg = (float)tiltMotor_.getPosition() / kTiltStepsPerDeg;
     status.rotationLimitDeg = rotationLimitDeg_;
     status.tiltLimitDeg = tiltLimitDeg_;
     status.moving = (rotationMotor_.getPosition() != rotationTarget_) ||
@@ -145,6 +149,10 @@ void PlatformController::tiltTimerCallback(void* arg) {
     self->tiltMotor_.stepOnce(target > position);
 }
 
-int32_t PlatformController::limitSteps(float limitDeg) const {
-    return (int32_t)lroundf(limitDeg * kStepsPerDeg);
+int32_t PlatformController::rotationLimitSteps() const {
+    return (int32_t)lroundf(rotationLimitDeg_ * kRotationStepsPerDeg);
+}
+
+int32_t PlatformController::tiltLimitSteps() const {
+    return (int32_t)lroundf(tiltLimitDeg_ * kTiltStepsPerDeg);
 }

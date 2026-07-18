@@ -14,6 +14,9 @@
  *   full deflection corresponds to the configured rotation limit.
  * - Tilt axis (around x): joystick y in [-1..1] sets a target angle within
  *   the configured tilt limit.
+ * - All angles (targets, limits, status) refer to the PLATFORM, not the
+ *   motor shaft. The gear reduction per axis is configured in config.h
+ *   (ROTATION_/TILT_STEPS_PER_PLATFORM_DEG).
  * - Both motors are moved by fixed-rate esp_timers (AXIS_STEP_FREQUENCY)
  *   toward their target and keep holding torque at all times - the tilt
  *   axis carries load and must not slip, or the step counting would no
@@ -49,7 +52,8 @@ public:
 private:
     static void rotationTimerCallback(void* arg);
     static void tiltTimerCallback(void* arg);
-    int32_t limitSteps(float limitDeg) const;
+    int32_t rotationLimitSteps() const;
+    int32_t tiltLimitSteps() const;
 
     MotorControllerULN2003& rotationMotor_;
     MotorControllerULN2003& tiltMotor_;

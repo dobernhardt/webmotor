@@ -26,6 +26,18 @@
 // Axis Control Constants
 // 28BYJ-48 with half-step sequence: 4096 steps per output shaft revolution
 #define STEPS_PER_REVOLUTION 4096
+
+// Gear reduction between motor output shaft and platform, per axis
+// (motor revolutions per platform revolution). 1.0 = direct drive.
+#define ROTATION_GEAR_RATIO 1.0f
+#define TILT_GEAR_RATIO 1.0f
+
+// Steps per degree of PLATFORM angle. All angles in the WebUI, the status
+// output and the cloud sync refer to the platform, not the motor shaft -
+// the conversion to motor steps happens exclusively through these values.
+// Replace the formula with a measured value if the ratio is not exact.
+#define ROTATION_STEPS_PER_PLATFORM_DEG ((float)STEPS_PER_REVOLUTION / 360.0f * ROTATION_GEAR_RATIO)
+#define TILT_STEPS_PER_PLATFORM_DEG ((float)STEPS_PER_REVOLUTION / 360.0f * TILT_GEAR_RATIO)
 // Hard upper bound for the step frequency (28BYJ-48 stalls above ~1000 pps)
 #define ABS_MAX_FREQUENCY 1000
 // Fixed traversal speed for both axes: 75 % of the stall limit
