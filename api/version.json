@@ -1,0 +1,10 @@
+{
+  "version": "0.1.0-cli",
+  "semVer": "0.1.0-cli",
+  "fullSemVer": "0.1.0-cli+34737da",
+  "branchName": "joystick-lenkung",
+  "sha": "34737da83fcdf0f8c7ed195408b5949b9619c78b",
+  "shortSha": "34737da",
+  "build_timestamp": "2026-07-18T14:49:10Z",
+  "deployed_via": "swa-cli"
+}

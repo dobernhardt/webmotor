@@ -128,6 +128,34 @@ document.addEventListener('DOMContentLoaded', function() {
     joystick.addEventListener('pointerup', releaseJoystick);
     joystick.addEventListener('pointercancel', releaseJoystick);
 
+    // Arrow-key control: each keydown (incl. auto-repeat while held) nudges
+    // the target by 5 % of the axis limit
+    const KEY_STEP = 0.05;
+    document.addEventListener('keydown', function(event) {
+        if (!isConfigured || engaged) return;
+
+        // Don't hijack the keys while the user is in an input field
+        const tag = document.activeElement ? document.activeElement.tagName : '';
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+        let dx = 0;
+        let dy = 0;
+        switch (event.key) {
+            case 'ArrowLeft': dx = -KEY_STEP; break;
+            case 'ArrowRight': dx = KEY_STEP; break;
+            case 'ArrowUp': dy = KEY_STEP; break;
+            case 'ArrowDown': dy = -KEY_STEP; break;
+            default: return;
+        }
+        event.preventDefault();
+
+        joyX = Math.max(-1, Math.min(1, joyX + dx));
+        joyY = Math.max(-1, Math.min(1, joyY + dy));
+        setKnob(joyX, joyY);
+        updateJoystickDisplay();
+        releaseSendsLeft = 3; // let the send loop deliver the new target
+    });
+
     // Send loop: while engaged post the current target; after release re-send
     // the held target a few times so it reliably arrives. The backend stores
     // only the latest value, the ESP ignores targets older than 2 s.
@@ -157,18 +185,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // =========================
-    // Emergency stop
+    // Home: define the current position of both axes as 0°
     // =========================
-    document.getElementById('stop').addEventListener('click', async function() {
-        // Freeze: stop sending targets, the ESP freezes both axes in place.
-        // The knob re-syncs to the frozen position via the state poll.
-        engaged = false;
-        releaseSendsLeft = 0;
+    document.getElementById('home-axes').addEventListener('click', async function() {
         try {
-            await apiRequest('/commands', 'POST', { action: 'stop' });
-            updateStatus('🛑 NOT-AUS gesendet (Achsen eingefroren)');
+            await apiRequest('/commands', 'POST', { action: 'center' });
+            // Optimistically re-center the knob; the state poll confirms
+            joyX = 0;
+            joyY = 0;
+            setKnob(0, 0);
+            updateJoystickDisplay();
+            updateStatus('✓ Home gesetzt (aktuelle Stellung = 0°)');
         } catch (error) {
-            updateStatus(`✗ NOT-AUS fehlgeschlagen: ${error.message}`);
+            updateStatus(`✗ Home fehlgeschlagen: ${error.message}`);
         }
     });
 
@@ -222,20 +251,6 @@ document.addEventListener('DOMContentLoaded', function() {
             updateStatus(`✓ Limits gespeichert: Drehung ±${rotationLimitSlider.value}°, Neigung ±${tiltLimitSlider.value}°`);
         } catch (error) {
             updateStatus(`✗ Fehler beim Speichern: ${error.message}`);
-        }
-    });
-
-    document.getElementById('center-axes').addEventListener('click', async function() {
-        try {
-            await apiRequest('/commands', 'POST', { action: 'center' });
-            // Optimistically re-center the knob; the state poll confirms
-            joyX = 0;
-            joyY = 0;
-            setKnob(0, 0);
-            updateJoystickDisplay();
-            updateStatus('✓ Achsen zentriert (aktuelle Stellung = 0°)');
-        } catch (error) {
-            updateStatus(`✗ Fehler: ${error.message}`);
         }
     });
 

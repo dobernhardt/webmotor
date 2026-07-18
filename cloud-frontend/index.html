@@ -73,9 +73,11 @@
             <div class="latency-hint">
                 Hinweis: Die Steuerung läuft über die Cloud &ndash; mit ca. 0,5&ndash;1&nbsp;s Verzögerung.
                 Der Joystick springt nicht zurück, sondern zeigt die tatsächliche Stellung der Achsen.
+                Steuern geht auch mit den Pfeiltasten.
             </div>
 
-            <button id="stop" class="btn btn-danger">NOT-AUS</button>
+            <button id="home-axes" class="btn btn-secondary"
+                    title="Aktuelle Stellung beider Achsen als 0° übernehmen">Home</button>
         </div>
 
         <!-- Axis Limits Card (collapsible) -->
@@ -104,7 +106,6 @@
 
             <div class="control-group">
                 <button id="save-limits" class="btn btn-primary">Speichern</button>
-                <button id="center-axes" class="btn btn-secondary">Achsen zentrieren</button>
             </div>
         </details>
 
