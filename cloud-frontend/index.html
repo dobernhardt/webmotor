@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,11 +9,11 @@
 <body>
     <div class="container">
         <h1>☁️ WebMotor Cloud Control</h1>
-        
+
         <!-- Cloud Configuration Card -->
         <div class="control-card">
             <h2>Cloud Configuration</h2>
-            
+
             <div class="control-group">
                 <label for="api-key">API Key:</label>
                 <input type="password" id="api-key" placeholder="Enter API Key">
@@ -31,16 +31,16 @@
                     <span id="connection-status" class="status-indicator disconnected">Disconnected</span>
                 </div>
                 <div class="status-item">
-                    <span class="status-label">Device:</span>
+                    <span class="status-label">Roboter:</span>
                     <span id="device-status" class="status-indicator disconnected">Unknown</span>
                 </div>
                 <div class="status-item">
-                    <span class="status-label">Motor:</span>
-                    <span id="motor-status" class="motor-status unknown">Unknown</span>
+                    <span class="status-label">Fahren:</span>
+                    <span id="drive-status" class="motor-status unknown">-</span>
                 </div>
                 <div class="status-item">
-                    <span class="status-label">Position:</span>
-                    <span id="position-value" class="value-display">-</span>
+                    <span class="status-label">Lenkung:</span>
+                    <span id="steering-value" class="value-display">-</span>
                 </div>
                 <div class="status-item">
                     <span class="status-label">Last Update:</span>
@@ -48,71 +48,59 @@
                 </div>
             </div>
         </div>
-        
-        <!-- Motor Control Card -->
+
+        <!-- Joystick Card -->
         <div class="control-card">
-            <h2>Motor Control</h2>
-            
-            <div class="control-group">
-                <label for="microsteps">Microstepping:</label>
-                <select id="microsteps">
-                    <option value="1">Full Step (1/1)</option>
-                    <option value="2">Half Step (1/2)</option>
-                    <option value="4">Quarter Step (1/4)</option>
-                    <option value="8">Eighth Step (1/8)</option>
-                    <option value="16">Sixteenth Step (1/16)</option>
-                </select>
+            <h2>🕹️ Fahren</h2>
+
+            <div class="joystick-area">
+                <div id="joystick" class="joystick-base">
+                    <div id="joystick-knob" class="joystick-knob"></div>
+                </div>
             </div>
 
             <div class="control-group">
-                <label for="frequency">Frequency (Hz):</label>
+                <div class="joystick-values">
+                    X (Lenkung): <span id="joy-x">0.00</span> |
+                    Y (Gas): <span id="joy-y">0.00</span>
+                </div>
+            </div>
+
+            <div class="latency-hint">
+                Hinweis: Die Steuerung läuft über die Cloud &ndash; mit ca. 0,5&ndash;1&nbsp;s Verzögerung.
+            </div>
+
+            <button id="stop" class="btn btn-danger">NOT-AUS</button>
+        </div>
+
+        <!-- Drive Configuration Card -->
+        <div class="control-card">
+            <h2>Fahrwerk</h2>
+
+            <div class="control-group">
+                <label for="steer-limit">Lenk-Limit (&plusmn;&deg;):</label>
                 <div class="frequency-container">
-                    <input type="range" id="frequency" min="0" max="10000" value="100" step="10">
+                    <input type="range" id="steer-limit" min="5" max="180" value="45" step="5">
                     <div class="frequency-display">
-                        <span id="frequency-value">100</span>
+                        <span id="steer-limit-value">45</span>&deg;
                     </div>
                 </div>
             </div>
 
             <div class="control-group">
-                <label>Direction:</label>
-                <div class="toggle-container">
-                    <input type="checkbox" id="direction" class="toggle-input">
-                    <label for="direction" class="toggle-switch"></label>
-                    <span class="toggle-text" id="direction-text">CCW</span>
+                <label for="max-speed">Max. Geschwindigkeit (Schritte/s):</label>
+                <div class="frequency-container">
+                    <input type="range" id="max-speed" min="50" max="1000" value="600" step="50">
+                    <div class="frequency-display">
+                        <span id="max-speed-value">600</span>
+                    </div>
                 </div>
             </div>
 
             <div class="control-group">
-                <label>Mode:</label>
-                <div class="mode-buttons">
-                    <button id="start" class="btn btn-primary">Start</button>
-                    <button id="stop" class="btn btn-secondary">Stop</button>
-                    <button id="release" class="btn btn-info">Release</button>
-                </div>
+                <button id="save-drive-config" class="btn btn-primary">Speichern</button>
+                <button id="center-steering" class="btn btn-secondary">Lenkung zentrieren</button>
             </div>
-        </div>
-
-        <!-- 🆕 JOYSTICK SECTION -->
-        <div class="control-card">
-            <h2>🕹️ Joystick Control</h2>
-
-            <div class="joystick-area">
-                <div id="joystick-box" class="joystick-box">
-                    Move Joystick
-                </div>
-            </div>
-
-            <div class="control-group">
-                <label>Joystick Values:</label>
-                <div class="joystick-values">
-                    X: <span id="joy-x">0</span> |
-                    Y: <span id="joy-y">0</span>
-                </div>
-            </div>
-
-            <!-- 🆕 REPORT BUTTON -->
-            <button id="report" class="btn btn-danger">Melden</button>
         </div>
 
         <!-- Status Log -->

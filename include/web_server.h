@@ -3,28 +3,30 @@
 
 #include <Arduino.h>
 #include <WebServer.h>
-#include "state.h"
 
-class AbstractMotorController;
+class DriveController;
 class WifiManager;
 class CloudClient;
 
 class WebServerController {
 public:
     WebServerController();
-    void begin(AbstractMotorController& motorController, WifiManager& wifiManager, CloudClient& cloudClient);
+    void begin(DriveController& driveController, WifiManager& wifiManager, CloudClient& cloudClient);
     void handle();
 
 private:
     ::WebServer server;
-    AbstractMotorController* motor;
+    DriveController* drive;
     WifiManager* wifi;
     CloudClient* cloud;
-    MotorState cachedState;
 
     void registerRoutes();
-    void handleMotorStatus();
-    void handleMotorControl();
+    void handleDrive();
+    void handleDriveStatus();
+    void handleDriveConfigGet();
+    void handleDriveConfigPost();
+    void handleDriveCenter();
+    void handleDriveStop();
     void handleWiFiConfig();
     void handleWiFiStatus();
     void handleCloudConfig();
@@ -33,7 +35,6 @@ private:
     void handleInfo();
     void sendJson(int statusCode, const String& payload);
     void serveFile(const String& path, const String& contentType);
-    void updateStatusLED();
 };
 
 #endif // WEB_SERVER_H

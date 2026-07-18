@@ -3,17 +3,14 @@
 
 #include <Arduino.h>
 
-enum MotorMode : uint8_t {
-    STOPPED = 0,
-    RUNNING = 1,
-    RELEASED = 2
-};
-
-struct MotorState {
-    uint16_t microsteps;   // Microstepping setting: {1, 2, 4, 8, 16}
-    uint32_t frequency;    // Frequency in Hz (0-10000)
-    bool direction;        // Direction of rotation: true for CW, false for CCW
-    MotorMode mode;        // Operational mode
+struct DriveStatus {
+    float x;                // last joystick x [-1..1] (steering)
+    float y;                // last joystick y [-1..1] (throttle)
+    float steeringDeg;      // current steering angle relative to center
+    float steerLimitDeg;    // configured steering limit
+    uint32_t maxFrequency;  // configured max drive step frequency (Hz)
+    bool driving;           // drive motor currently stepping
+    bool failsafe;          // drive stopped because joystick updates timed out
 };
 
 #endif // STATE_H
