@@ -178,7 +178,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 steerLimitDeg: parseFloat(steerLimitSlider.value),
                 maxFrequency: parseInt(maxSpeedSlider.value)
             });
-            updateStatus(`✓ Fahrwerk gespeichert: ±${steerLimitSlider.value}°, max ${maxSpeedSlider.value} Schritte/s`);
+            updateStatus(`✓ Limits gespeichert: X ±${steerLimitSlider.value}°, Y max ${maxSpeedSlider.value} Schritte/s`);
         } catch (error) {
             updateStatus(`✗ Fehler beim Speichern: ${error.message}`);
         }
@@ -187,7 +187,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('center-steering').addEventListener('click', async function() {
         try {
             await apiRequest('/commands', 'POST', { action: 'center' });
-            updateStatus('✓ Zentrieren gesendet (aktuelle Stellung = geradeaus)');
+            updateStatus('✓ Zentrieren gesendet (aktuelle Stellung = Mitte)');
         } catch (error) {
             updateStatus(`✗ Fehler: ${error.message}`);
         }
@@ -203,6 +203,8 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('api-key').value = apiKey;
             isConfigured = true;
             updateStatus('Configuration loaded from storage');
+            // Collapse the cloud config card - it is already set up
+            document.getElementById('cloud-config-card').open = false;
             startStatePolling();
             startDeviceStatusPolling();
             loadDriveConfig();
@@ -222,6 +224,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         isConfigured = true;
         updateStatus('Configuration saved successfully');
+        document.getElementById('cloud-config-card').open = false;
 
         startStatePolling();
         startDeviceStatusPolling();
@@ -286,7 +289,7 @@ document.addEventListener('DOMContentLoaded', function() {
             driveStatus.textContent = 'Failsafe';
             driveStatus.className = 'motor-status stopped';
         } else if (state.driving) {
-            driveStatus.textContent = 'Fährt';
+            driveStatus.textContent = 'Läuft';
             driveStatus.className = 'motor-status running';
         } else if (state.driving !== undefined) {
             driveStatus.textContent = 'Steht';

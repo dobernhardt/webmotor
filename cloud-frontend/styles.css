@@ -40,6 +40,34 @@ h1 {
     font-weight: 600;
 }
 
+/* Collapsible card (details/summary) */
+details.control-card > summary {
+    color: #5a6c7d;
+    font-size: 1.3rem;
+    font-weight: 600;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+
+details.control-card > summary::-webkit-details-marker {
+    display: none;
+}
+
+details.control-card > summary::after {
+    content: '▸';
+    float: right;
+    transition: transform 0.2s;
+}
+
+details.control-card[open] > summary {
+    margin-bottom: 20px;
+}
+
+details.control-card[open] > summary::after {
+    transform: rotate(90deg);
+}
+
 /* Status bar styling */
 .status-bar {
     display: grid;

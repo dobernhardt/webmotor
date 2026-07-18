@@ -10,9 +10,9 @@
     <div class="container">
         <h1>☁️ WebMotor Cloud Control</h1>
 
-        <!-- Cloud Configuration Card -->
-        <div class="control-card">
-            <h2>Cloud Configuration</h2>
+        <!-- Cloud Configuration Card (collapsible) -->
+        <details class="control-card" id="cloud-config-card" open>
+            <summary>Cloud Configuration</summary>
 
             <div class="control-group">
                 <label for="api-key">API Key:</label>
@@ -21,7 +21,7 @@
 
             <button id="save-config" class="btn btn-primary">Save Configuration</button>
             <button id="test-connection" class="btn btn-secondary">Test Connection</button>
-        </div>
+        </details>
 
         <!-- Status Bar -->
         <div class="control-card">
@@ -35,11 +35,11 @@
                     <span id="device-status" class="status-indicator disconnected">Unknown</span>
                 </div>
                 <div class="status-item">
-                    <span class="status-label">Fahren:</span>
+                    <span class="status-label">Y-Achse:</span>
                     <span id="drive-status" class="motor-status unknown">-</span>
                 </div>
                 <div class="status-item">
-                    <span class="status-label">Lenkung:</span>
+                    <span class="status-label">X-Achse:</span>
                     <span id="steering-value" class="value-display">-</span>
                 </div>
                 <div class="status-item">
@@ -51,7 +51,7 @@
 
         <!-- Joystick Card -->
         <div class="control-card">
-            <h2>🕹️ Fahren</h2>
+            <h2>🕹️ Steuerung</h2>
 
             <div class="joystick-area">
                 <div id="joystick" class="joystick-base">
@@ -61,8 +61,8 @@
 
             <div class="control-group">
                 <div class="joystick-values">
-                    X (Lenkung): <span id="joy-x">0.00</span> |
-                    Y (Gas): <span id="joy-y">0.00</span>
+                    X: <span id="joy-x">0.00</span> |
+                    Y: <span id="joy-y">0.00</span>
                 </div>
             </div>
 
@@ -73,12 +73,12 @@
             <button id="stop" class="btn btn-danger">NOT-AUS</button>
         </div>
 
-        <!-- Drive Configuration Card -->
+        <!-- Axis Limits Card -->
         <div class="control-card">
-            <h2>Fahrwerk</h2>
+            <h2>Achsen-Limits</h2>
 
             <div class="control-group">
-                <label for="steer-limit">Lenk-Limit (&plusmn;&deg;):</label>
+                <label for="steer-limit">X-Limit (&plusmn;&deg;):</label>
                 <div class="frequency-container">
                     <input type="range" id="steer-limit" min="5" max="180" value="45" step="5">
                     <div class="frequency-display">
@@ -88,7 +88,7 @@
             </div>
 
             <div class="control-group">
-                <label for="max-speed">Max. Geschwindigkeit (Schritte/s):</label>
+                <label for="max-speed">Y-Limit (Schritte/s):</label>
                 <div class="frequency-container">
                     <input type="range" id="max-speed" min="50" max="1000" value="600" step="50">
                     <div class="frequency-display">
@@ -99,7 +99,7 @@
 
             <div class="control-group">
                 <button id="save-drive-config" class="btn btn-primary">Speichern</button>
-                <button id="center-steering" class="btn btn-secondary">Lenkung zentrieren</button>
+                <button id="center-steering" class="btn btn-secondary">X-Achse zentrieren</button>
             </div>
         </div>
 
